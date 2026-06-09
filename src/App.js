@@ -16,7 +16,6 @@ const db = getFirestore(app);
 
 const BRAND = '#111111';
 const BRAND_LIGHT = '#f2f2f2';
-const BRAND_ACCENT = '#c9a84c';
 
 const STAGES = ['New Lead', 'Contact Made', 'Test Drive', 'Negotiation', 'F&I', 'Delivered'];
 
@@ -261,7 +260,7 @@ function LeadsPage({ leads, rules }) {
       const updated = leads.find(l => l.id === selectedLead.id);
       if (updated) setSelectedLead(updated);
     }
-  }, [leads]);
+}, [leads, selectedLead]);
 
   function handleChange(e) { setForm({ ...form, [e.target.name]: e.target.value }); }
 
