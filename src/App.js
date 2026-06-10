@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot } from 'firebase/firestore';
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth';
@@ -16,10 +16,8 @@ const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const auth = getAuth(app);
 
-// Manager UIDs — only these emails get full access
 const MANAGER_UIDS = ['DD4YST73YdU7JUXgxS5yZEMYmlg2'];
 
-// Map email to rep name
 const EMAIL_TO_REP = {
   'tfrost@carguyzmotors.com': 'Taylor',
   'twiggins@carguyzmotors.com': 'Manager',
@@ -85,6 +83,27 @@ function daysSince(ts) {
   return Math.floor((Date.now() - ts) / (1000 * 60 * 60 * 24));
 }
 
+// ─── Notifications ─────────────────────────────────────────
+function sendNotification(title, body) {
+  if (Notification.permission === 'granted') {
+    new Notification(title, {
+      body,
+      icon: '/favicon.ico',
+      badge: '/favicon.ico',
+    });
+  }
+}
+
+async function requestNotificationPermission() {
+  if (!('Notification' in window)) return false;
+  if (Notification.permission === 'granted') return true;
+  if (Notification.permission !== 'denied') {
+    const permission = await Notification.requestPermission();
+    return permission === 'granted';
+  }
+  return false;
+}
+
 const btnPrimary = {
   background: BRAND, color: 'white', border: 'none', borderRadius: '8px',
   padding: '8px 16px', cursor: 'pointer', fontSize: '14px', fontWeight: '600',
@@ -115,39 +134,23 @@ function LoginPage() {
   }
 
   return (
-    <div style={{
-      minHeight: '100vh', background: BRAND, display: 'flex',
-      alignItems: 'center', justifyContent: 'center', fontFamily: 'sans-serif',
-    }}>
+    <div style={{ minHeight: '100vh', background: BRAND, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'sans-serif' }}>
       <div style={{ width: '100%', maxWidth: '380px', padding: '24px' }}>
         <div style={{ textAlign: 'center', marginBottom: '32px' }}>
-          <div style={{
-            display: 'inline-block', background: 'white', color: BRAND,
-            fontWeight: '800', fontSize: '18px', padding: '10px 20px',
-            borderRadius: '8px', letterSpacing: '2px', marginBottom: '12px',
-          }}>CGM</div>
+          <div style={{ display: 'inline-block', background: 'white', color: BRAND, fontWeight: '800', fontSize: '18px', padding: '10px 20px', borderRadius: '8px', letterSpacing: '2px', marginBottom: '12px' }}>CGM</div>
           <div style={{ color: 'white', fontSize: '20px', fontWeight: '800', letterSpacing: '1px' }}>CAR GUYZ MOTORS</div>
           <div style={{ color: '#888', fontSize: '13px', marginTop: '4px' }}>Internal CRM · Sign in to continue</div>
         </div>
-
         <div style={{ background: 'white', borderRadius: '12px', padding: '28px' }}>
           <div style={{ marginBottom: '16px' }}>
             <label style={{ fontSize: '12px', fontWeight: '600', color: '#666', display: 'block', marginBottom: '6px' }}>EMAIL</label>
-            <input
-              type="email" value={email} onChange={e => setEmail(e.target.value)}
-              placeholder="you@carguyzmotors.com"
-              onKeyDown={e => e.key === 'Enter' && handleLogin()}
-              style={inputStyle}
-            />
+            <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@carguyzmotors.com"
+              onKeyDown={e => e.key === 'Enter' && handleLogin()} style={inputStyle} />
           </div>
           <div style={{ marginBottom: '20px' }}>
             <label style={{ fontSize: '12px', fontWeight: '600', color: '#666', display: 'block', marginBottom: '6px' }}>PASSWORD</label>
-            <input
-              type="password" value={password} onChange={e => setPassword(e.target.value)}
-              placeholder="••••••••"
-              onKeyDown={e => e.key === 'Enter' && handleLogin()}
-              style={inputStyle}
-            />
+            <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••"
+              onKeyDown={e => e.key === 'Enter' && handleLogin()} style={inputStyle} />
           </div>
           {error && <div style={{ color: '#993C1D', fontSize: '13px', marginBottom: '14px', fontWeight: '500' }}>{error}</div>}
           <button onClick={handleLogin} disabled={loading} style={{ ...btnPrimary, width: '100%', padding: '12px', fontSize: '15px' }}>
@@ -155,6 +158,58 @@ function LoginPage() {
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ─── Notification Bell ─────────────────────────────────────
+function NotificationBell({ notifications, onClear }) {
+  const [open, setOpen] = useState(false);
+  const unread = notifications.filter(n => !n.read).length;
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <button onClick={() => setOpen(!open)} style={{
+        background: 'none', border: '1px solid #ddd', borderRadius: '8px',
+        padding: '6px 12px', cursor: 'pointer', fontSize: '16px', position: 'relative',
+      }}>
+        🔔
+        {unread > 0 && (
+          <span style={{
+            position: 'absolute', top: '-4px', right: '-4px', background: '#ff6b35',
+            color: 'white', borderRadius: '50%', width: '16px', height: '16px',
+            fontSize: '10px', fontWeight: '700', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>{unread}</span>
+        )}
+      </button>
+      {open && (
+        <div style={{
+          position: 'absolute', right: 0, top: '40px', width: '320px', background: 'white',
+          border: '1px solid #e0e0e0', borderRadius: '12px', boxShadow: '0 4px 20px rgba(0,0,0,0.12)',
+          zIndex: 200, maxHeight: '400px', overflowY: 'auto',
+        }}>
+          <div style={{ padding: '12px 16px', borderBottom: '1px solid #e0e0e0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ fontWeight: '700', fontSize: '14px' }}>Notifications</div>
+            {notifications.length > 0 && (
+              <button onClick={onClear} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '12px', color: '#888' }}>Clear all</button>
+            )}
+          </div>
+          {notifications.length === 0 ? (
+            <div style={{ padding: '20px', textAlign: 'center', color: '#999', fontSize: '13px' }}>No notifications</div>
+          ) : (
+            notifications.map((n, i) => (
+              <div key={i} style={{
+                padding: '12px 16px', borderBottom: '1px solid #f0f0f0',
+                background: n.read ? 'white' : '#f8f8f8',
+              }}>
+                <div style={{ fontSize: '13px', fontWeight: n.read ? '400' : '600' }}>{n.title}</div>
+                <div style={{ fontSize: '12px', color: '#666', marginTop: '2px' }}>{n.body}</div>
+                <div style={{ fontSize: '11px', color: '#bbb', marginTop: '4px' }}>{formatDate(n.ts)}</div>
+              </div>
+            ))
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -178,7 +233,7 @@ function NavBar({ page, setPage, isManager }) {
 }
 
 // ─── Lead Detail Panel ─────────────────────────────────────
-function LeadDetail({ lead, onClose }) {
+function LeadDetail({ lead, onClose, currentRep, isManager }) {
   const [note, setNote] = useState('');
   const [followUp, setFollowUp] = useState(lead.followUp || '');
   const [editField, setEditField] = useState(null);
@@ -186,7 +241,7 @@ function LeadDetail({ lead, onClose }) {
 
   async function saveNote() {
     if (!note.trim()) return;
-    const activity = [...(lead.activity || []), { text: note, ts: Date.now(), type: 'note' }];
+    const activity = [...(lead.activity || []), { text: note, ts: Date.now(), type: 'note', author: currentRep }];
     await updateDoc(doc(db, 'leads', lead.id), { activity });
     setNote('');
   }
@@ -204,8 +259,9 @@ function LeadDetail({ lead, onClose }) {
     const i = STAGES.indexOf(lead.stage);
     if (i < STAGES.length - 1) {
       const newStage = STAGES[i + 1];
-      const activity = [...(lead.activity || []), { text: `Stage → "${newStage}"`, ts: Date.now(), type: 'stage' }];
+      const activity = [...(lead.activity || []), { text: `Stage → "${newStage}"`, ts: Date.now(), type: 'stage', author: currentRep }];
       await updateDoc(doc(db, 'leads', lead.id), { stage: newStage, activity });
+      sendNotification('Stage Updated', `${lead.name} moved to ${newStage}`);
     }
   }
 
@@ -213,7 +269,7 @@ function LeadDetail({ lead, onClose }) {
     const i = STAGES.indexOf(lead.stage);
     if (i > 0) {
       const newStage = STAGES[i - 1];
-      const activity = [...(lead.activity || []), { text: `Stage → "${newStage}"`, ts: Date.now(), type: 'stage' }];
+      const activity = [...(lead.activity || []), { text: `Stage → "${newStage}"`, ts: Date.now(), type: 'stage', author: currentRep }];
       await updateDoc(doc(db, 'leads', lead.id), { stage: newStage, activity });
     }
   }
@@ -309,7 +365,7 @@ function LeadDetail({ lead, onClose }) {
                 <div style={{ fontSize: '16px' }}>{a.type === 'note' ? '📝' : '🔄'}</div>
                 <div>
                   <div style={{ fontSize: '13px' }}>{a.text}</div>
-                  <div style={{ fontSize: '11px', color: '#999', marginTop: '2px' }}>{formatDate(a.ts)}</div>
+                  <div style={{ fontSize: '11px', color: '#999', marginTop: '2px' }}>{formatDate(a.ts)}{a.author ? ` · ${a.author}` : ''}</div>
                 </div>
               </div>
             ))}
@@ -321,7 +377,7 @@ function LeadDetail({ lead, onClose }) {
 }
 
 // ─── Leads Page ────────────────────────────────────────────
-function LeadsPage({ leads, rules, isManager, currentRep }) {
+function LeadsPage({ leads, rules, isManager, currentRep, addNotification }) {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [manualRep, setManualRep] = useState(false);
@@ -334,7 +390,37 @@ function LeadsPage({ leads, rules, isManager, currentRep }) {
     }
   }, [leads, selectedLead]);
 
-  // Filter leads by rep if not manager
+  // Check follow-ups and uncontacted leads every minute
+  useEffect(() => {
+    function checkAlerts() {
+      const now = Date.now();
+      const myLeads = isManager ? leads : leads.filter(l => l.rep === currentRep);
+
+      myLeads.forEach(lead => {
+        // Follow-up due
+        if (lead.followUp) {
+          const followUpTime = new Date(lead.followUp).getTime();
+          if (followUpTime <= now && followUpTime >= now - 60000) {
+            sendNotification('📅 Follow-up Due', `${lead.name} — ${lead.vehicle}`);
+            addNotification('📅 Follow-up Due', `${lead.name} — ${lead.vehicle}`);
+          }
+        }
+        // Not contacted in 24hrs
+        if (lead.stage === 'New Lead' && lead.createdAt) {
+          const hoursSince = (now - lead.createdAt) / (1000 * 60 * 60);
+          if (hoursSince >= 24 && hoursSince < 25) {
+            sendNotification('⚠️ Lead Not Contacted', `${lead.name} hasn't been contacted in 24 hours`);
+            addNotification('⚠️ Lead Not Contacted', `${lead.name} hasn't been contacted in 24 hours`);
+          }
+        }
+      });
+    }
+
+    checkAlerts();
+    const interval = setInterval(checkAlerts, 60000);
+    return () => clearInterval(interval);
+  }, [leads, isManager, currentRep, addNotification]);
+
   const visibleLeads = isManager ? leads : leads.filter(l => l.rep === currentRep);
 
   function handleChange(e) { setForm({ ...form, [e.target.name]: e.target.value }); }
@@ -346,6 +432,8 @@ function LeadsPage({ leads, rules, isManager, currentRep }) {
     await addDoc(collection(db, 'leads'), {
       ...form, price, stage: 'New Lead', rep: assignedRep, createdAt: Date.now(), activity: []
     });
+    sendNotification('🚗 New Lead', `${form.name} assigned to ${assignedRep}`);
+    addNotification('🚗 New Lead', `${form.name} — ${form.vehicle} assigned to ${assignedRep}`);
     setForm(emptyForm);
     setShowForm(false);
     setManualRep(false);
@@ -354,7 +442,12 @@ function LeadsPage({ leads, rules, isManager, currentRep }) {
   async function advanceStage(lead, e) {
     e.stopPropagation();
     const i = STAGES.indexOf(lead.stage);
-    if (i < STAGES.length - 1) await updateDoc(doc(db, 'leads', lead.id), { stage: STAGES[i + 1] });
+    if (i < STAGES.length - 1) {
+      const newStage = STAGES[i + 1];
+      await updateDoc(doc(db, 'leads', lead.id), { stage: newStage });
+      sendNotification('🔄 Stage Updated', `${lead.name} moved to ${newStage}`);
+      addNotification('🔄 Stage Updated', `${lead.name} moved to ${newStage}`);
+    }
   }
 
   async function regressStage(lead, e) {
@@ -495,7 +588,7 @@ function LeadsPage({ leads, rules, isManager, currentRep }) {
         )}
       </div>
 
-      {selectedLead && <LeadDetail lead={selectedLead} onClose={() => setSelectedLead(null)} />}
+      {selectedLead && <LeadDetail lead={selectedLead} onClose={() => setSelectedLead(null)} currentRep={currentRep} isManager={isManager} />}
     </div>
   );
 }
@@ -748,6 +841,8 @@ function App() {
   const [vehicles, setVehicles] = useState([]);
   const [rules, setRules] = useState(initialRules);
   const [dataLoading, setDataLoading] = useState(true);
+  const [notifications, setNotifications] = useState([]);
+  const [notifPermission, setNotifPermission] = useState(false);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, u => {
@@ -759,6 +854,8 @@ function App() {
 
   useEffect(() => {
     if (!user) return;
+    requestNotificationPermission().then(granted => setNotifPermission(granted));
+
     let leadsLoaded = false;
     let inventoryLoaded = false;
 
@@ -780,6 +877,14 @@ function App() {
 
     return () => { unsub1(); unsub2(); };
   }, [user]);
+
+  const addNotification = useCallback((title, body) => {
+    setNotifications(prev => [{ title, body, ts: Date.now(), read: false }, ...prev].slice(0, 50));
+  }, []);
+
+  function clearNotifications() {
+    setNotifications([]);
+  }
 
   if (authLoading) return (
     <div style={{ fontFamily: 'sans-serif', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', background: BRAND }}>
@@ -815,7 +920,14 @@ function App() {
             </div>
           </div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          {!notifPermission && (
+            <button onClick={() => requestNotificationPermission().then(setNotifPermission)} style={{
+              background: '#ff6b35', color: 'white', border: 'none', borderRadius: '7px',
+              padding: '6px 12px', cursor: 'pointer', fontSize: '12px', fontWeight: '600',
+            }}>Enable Notifications</button>
+          )}
+          <NotificationBell notifications={notifications} onClear={clearNotifications} />
           <div style={{ fontSize: '12px', color: '#aaa' }}>{user.email}</div>
           <button onClick={() => signOut(auth)} style={{ background: 'none', border: '1px solid #ddd', borderRadius: '7px', padding: '6px 12px', cursor: 'pointer', fontSize: '12px', color: '#666' }}>
             Sign out
@@ -824,7 +936,7 @@ function App() {
       </div>
 
       <NavBar page={page} setPage={setPage} isManager={isManager} />
-      {page === 'Leads' && <LeadsPage leads={leads} rules={rules} isManager={isManager} currentRep={currentRep} />}
+      {page === 'Leads' && <LeadsPage leads={leads} rules={rules} isManager={isManager} currentRep={currentRep} addNotification={addNotification} />}
       {page === 'Inventory' && <InventoryPage vehicles={vehicles} isManager={isManager} />}
       {page === 'Reps' && isManager && <RepsPage leads={leads} />}
       {page === 'Settings' && isManager && <SettingsPage rules={rules} setRules={setRules} />}
