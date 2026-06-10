@@ -19,7 +19,7 @@ const auth = getAuth(app);
 const MANAGER_UIDS = ['DD4YST73YdU7JUXgxS5yZEMYmlg2'];
 const EMAIL_TO_REP = {
   'tfrost@carguyzmotors.com': 'Taylor',
-  'twiggins@carguyzmotors.com': 'Manager',
+  'twiggins@carguyzmotors.com': 'Ty',
 };
 
 const BRAND = '#111111';
@@ -222,21 +222,17 @@ function NavBar({ page, setPage, isManager }) {
 }
 
 // ─── Stage Drawer ──────────────────────────────────────────
-function StageDrawer({ stage, leads, onClose, isManager, currentRep, onSelectLead }) {
+function StageDrawer({ stage, leads, onClose, isManager, onSelectLead }) {
   const stageLeads = leads.filter(l => l.stage === stage);
   const totalValue = stageLeads.reduce((s, l) => s + (l.price || 0), 0);
 
   return (
     <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 300, display: 'flex', flexDirection: 'column' }}>
-      {/* Backdrop */}
       <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.5)' }} />
-      {/* Drawer */}
       <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'white', borderRadius: '16px 16px 0 0', maxHeight: '80vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        {/* Handle */}
         <div style={{ display: 'flex', justifyContent: 'center', padding: '10px 0 0' }}>
           <div style={{ width: '40px', height: '4px', background: '#ddd', borderRadius: '2px' }} />
         </div>
-        {/* Header */}
         <div style={{ padding: '14px 20px', borderBottom: '1px solid #e0e0e0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -249,7 +245,6 @@ function StageDrawer({ stage, leads, onClose, isManager, currentRep, onSelectLea
           </div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: '22px', cursor: 'pointer', color: '#999' }}>✕</button>
         </div>
-        {/* Lead list */}
         <div style={{ overflowY: 'auto', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
           {stageLeads.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '40px', color: '#999', fontSize: '14px' }}>No leads in this stage</div>
@@ -420,6 +415,7 @@ function LeadsPage({ leads, rules, isManager, currentRep, addNotification }) {
   const [manualRep, setManualRep] = useState(false);
   const [selectedLead, setSelectedLead] = useState(null);
   const [activeStage, setActiveStage] = useState(null);
+  const [viewAs, setViewAs] = useState(currentRep);
 
   useEffect(() => {
     if (selectedLead) {
@@ -431,7 +427,7 @@ function LeadsPage({ leads, rules, isManager, currentRep, addNotification }) {
   useEffect(() => {
     function checkAlerts() {
       const now = Date.now();
-      const myLeads = isManager ? leads : leads.filter(l => l.rep === currentRep);
+      const myLeads = leads.filter(l => l.rep === currentRep);
       myLeads.forEach(lead => {
         if (lead.followUp) {
           const followUpTime = new Date(lead.followUp).getTime();
@@ -452,15 +448,17 @@ function LeadsPage({ leads, rules, isManager, currentRep, addNotification }) {
     checkAlerts();
     const interval = setInterval(checkAlerts, 60000);
     return () => clearInterval(interval);
-  }, [leads, isManager, currentRep, addNotification]);
+  }, [leads, currentRep, addNotification]);
 
-  const visibleLeads = isManager ? leads : leads.filter(l => l.rep === currentRep);
+  // Filter leads based on view selector
+  const visibleLeads = viewAs === 'All' ? leads : leads.filter(l => l.rep === viewAs);
+
   function handleChange(e) { setForm({ ...form, [e.target.name]: e.target.value }); }
 
   async function handleAddLead() {
     if (!form.name || !form.vehicle || !form.price) { alert('Please fill in name, vehicle, and price.'); return; }
     const price = parseFloat(form.price);
-    const assignedRep = manualRep ? form.rep : (isManager ? assignRep(price, rules) : currentRep);
+    const assignedRep = manualRep ? form.rep : assignRep(price, rules);
     await addDoc(collection(db, 'leads'), { ...form, price, stage: 'New Lead', rep: assignedRep, createdAt: Date.now(), activity: [] });
     sendNotification('🚗 New Lead', `${form.name} assigned to ${assignedRep}`);
     addNotification('🚗 New Lead', `${form.name} — ${form.vehicle} assigned to ${assignedRep}`);
@@ -491,14 +489,33 @@ function LeadsPage({ leads, rules, isManager, currentRep, addNotification }) {
     }
   }
 
+  const viewOptions = isManager ? [currentRep, ...REPS.filter(r => r !== currentRep), 'All'] : null;
+
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-        <h2 style={{ margin: 0, fontSize: '16px', fontWeight: '700' }}>{isManager ? `All Leads (${visibleLeads.length})` : `My Leads (${visibleLeads.length})`}</h2>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+        <h2 style={{ margin: 0, fontSize: '16px', fontWeight: '700' }}>
+          {viewAs === 'All' ? `All Leads (${visibleLeads.length})` : `${viewAs}'s Leads (${visibleLeads.length})`}
+        </h2>
         <button onClick={() => setShowForm(!showForm)} style={btnPrimary}>{showForm ? 'Cancel' : '+ Add Lead'}</button>
       </div>
 
-      {/* Clickable stage cards */}
+      {/* Manager view selector */}
+      {isManager && (
+        <div style={{ display: 'flex', gap: '6px', marginBottom: '16px', flexWrap: 'wrap' }}>
+          {viewOptions.map(opt => (
+            <button key={opt} onClick={() => setViewAs(opt)} style={{
+              padding: '6px 14px', borderRadius: '20px', border: `1.5px solid ${viewAs === opt ? BRAND : '#ddd'}`,
+              background: viewAs === opt ? BRAND : 'white', color: viewAs === opt ? 'white' : '#666',
+              cursor: 'pointer', fontSize: '13px', fontWeight: '600',
+            }}>
+              {opt === currentRep ? `${opt} (me)` : opt}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Stage cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginBottom: '20px' }}>
         {STAGES.map(stage => {
           const count = visibleLeads.filter(l => l.stage === stage).length;
@@ -506,13 +523,12 @@ function LeadsPage({ leads, rules, isManager, currentRep, addNotification }) {
           return (
             <div key={stage} onClick={() => setActiveStage(stage)} style={{
               background: 'white', border: '1px solid #e0e0e0', borderRadius: '10px',
-              padding: '10px', borderTop: `3px solid ${stageColors[stage]}`,
-              cursor: 'pointer', transition: 'all .15s',
+              padding: '10px', borderTop: `3px solid ${stageColors[stage]}`, cursor: 'pointer',
             }}>
               <div style={{ fontSize: '10px', color: '#666', marginBottom: '4px' }}>{stage}</div>
               <div style={{ fontSize: '18px', fontWeight: '700' }}>{count}</div>
               {value > 0 && <div style={{ fontSize: '10px', color: '#888' }}>${(value / 1000).toFixed(0)}k</div>}
-              {count > 0 && <div style={{ fontSize: '10px', color: stageColors[stage], marginTop: '4px', fontWeight: '600' }}>tap to view →</div>}
+              {count > 0 && <div style={{ fontSize: '10px', color: stageColors[stage], marginTop: '2px', fontWeight: '600' }}>tap →</div>}
             </div>
           );
         })}
@@ -521,9 +537,7 @@ function LeadsPage({ leads, rules, isManager, currentRep, addNotification }) {
       {showForm && (
         <div style={{ background: 'white', border: '2px solid #111', borderRadius: '12px', padding: '16px', marginBottom: '20px' }}>
           <h3 style={{ margin: '0 0 4px', fontSize: '15px', fontWeight: '700' }}>New Lead</h3>
-          <p style={{ margin: '0 0 14px', fontSize: '12px', color: '#666' }}>
-            {isManager ? 'Rep auto-assigned by price unless you override.' : `Assigned to you (${currentRep}).`}
-          </p>
+          <p style={{ margin: '0 0 14px', fontSize: '12px', color: '#666' }}>Rep auto-assigned by price unless you override.</p>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
             {[
               { label: 'Customer Name', name: 'name', type: 'text', placeholder: 'Full name' },
@@ -548,16 +562,14 @@ function LeadsPage({ leads, rules, isManager, currentRep, addNotification }) {
                 </select>
               </div>
             ))}
-            {isManager && (
-              <div>
-                <label style={{ fontSize: '12px', color: '#666', display: 'block', marginBottom: '4px', fontWeight: '600' }}>
-                  Rep <span onClick={() => setManualRep(!manualRep)} style={{ color: BRAND, cursor: 'pointer', textDecoration: 'underline' }}>{manualRep ? '(auto)' : '(override)'}</span>
-                </label>
-                {manualRep
-                  ? <select name="rep" value={form.rep} onChange={handleChange} style={inputStyle}>{ALL_REPS.map(o => <option key={o}>{o}</option>)}</select>
-                  : <div style={{ ...inputStyle, color: '#888', background: '#fafafa' }}>{form.price ? `→ ${assignRep(parseFloat(form.price), rules)}` : 'Enter price'}</div>}
-              </div>
-            )}
+            <div>
+              <label style={{ fontSize: '12px', color: '#666', display: 'block', marginBottom: '4px', fontWeight: '600' }}>
+                Rep <span onClick={() => setManualRep(!manualRep)} style={{ color: BRAND, cursor: 'pointer', textDecoration: 'underline' }}>{manualRep ? '(auto)' : '(override)'}</span>
+              </label>
+              {manualRep
+                ? <select name="rep" value={form.rep} onChange={handleChange} style={inputStyle}>{ALL_REPS.map(o => <option key={o}>{o}</option>)}</select>
+                : <div style={{ ...inputStyle, color: '#888', background: '#fafafa' }}>{form.price ? `→ ${assignRep(parseFloat(form.price), rules)}` : 'Enter price'}</div>}
+            </div>
           </div>
           <button onClick={handleAddLead} style={{ ...btnPrimary, marginTop: '14px', padding: '10px 20px' }}>Save Lead</button>
         </div>
@@ -584,14 +596,14 @@ function LeadsPage({ leads, rules, isManager, currentRep, addNotification }) {
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px' }}>
               <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
                 <span style={{ fontSize: '12px', color: '#888' }}>{lead.source}</span>
-                {isManager && <span style={{ fontSize: '12px', fontWeight: '600' }}>{lead.rep}</span>}
+                {viewAs === 'All' && <span style={{ fontSize: '12px', fontWeight: '600' }}>{lead.rep}</span>}
                 {lead.followUp && <span style={{ fontSize: '11px', color: BRAND, fontWeight: '600' }}>📅 {new Date(lead.followUp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>}
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <button onClick={e => regressStage(lead, e)} style={{ background: '#f5f5f5', border: '1px solid #ddd', borderRadius: '6px', padding: '4px 10px', cursor: 'pointer', fontWeight: '700' }}>←</button>
                 <div style={{ padding: '3px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: '700', background: stageColors[lead.stage] + '22', color: stageColors[lead.stage], whiteSpace: 'nowrap' }}>{lead.stage}</div>
                 <button onClick={e => advanceStage(lead, e)} style={{ background: '#f5f5f5', border: '1px solid #ddd', borderRadius: '6px', padding: '4px 10px', cursor: 'pointer', fontWeight: '700' }}>→</button>
-                {isManager && <button onClick={e => deleteLead(lead.id, e)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ccc', fontSize: '16px' }}>✕</button>}
+                <button onClick={e => deleteLead(lead.id, e)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ccc', fontSize: '16px' }}>✕</button>
               </div>
             </div>
           </div>
@@ -609,7 +621,6 @@ function LeadsPage({ leads, rules, isManager, currentRep, addNotification }) {
           leads={visibleLeads}
           onClose={() => setActiveStage(null)}
           isManager={isManager}
-          currentRep={currentRep}
           onSelectLead={lead => setSelectedLead(lead)}
         />
       )}
