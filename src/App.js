@@ -221,6 +221,66 @@ function NavBar({ page, setPage, isManager }) {
   );
 }
 
+// ─── Touchpoint Tracker ────────────────────────────────────
+function TouchpointTracker({ lead }) {
+  const touchpoints = lead.touchpoints || { calls: 0, texts: 0, emails: 0, walkaround: false };
+
+  async function updateTouchpoint(field, value) {
+    await updateDoc(doc(db, 'leads', lead.id), {
+      [`touchpoints.${field}`]: value,
+    });
+  }
+
+  function CounterBox({ label, emoji, field, value }) {
+    return (
+      <div style={{ background: '#fafafa', border: '1px solid #e0e0e0', borderRadius: '10px', padding: '10px 12px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' }}>
+        <div style={{ fontSize: '20px' }}>{emoji}</div>
+        <div style={{ fontSize: '11px', color: '#666', fontWeight: '600', textAlign: 'center' }}>{label}</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <button onClick={() => updateTouchpoint(field, Math.max(0, value - 1))} style={{ width: '26px', height: '26px', borderRadius: '50%', border: '1px solid #ddd', background: 'white', cursor: 'pointer', fontSize: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '700' }}>−</button>
+          <div style={{ fontSize: '18px', fontWeight: '800', minWidth: '20px', textAlign: 'center' }}>{value}</div>
+          <button onClick={() => updateTouchpoint(field, value + 1)} style={{ width: '26px', height: '26px', borderRadius: '50%', border: '1px solid #ddd', background: BRAND, color: 'white', cursor: 'pointer', fontSize: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '700' }}>+</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ marginBottom: '20px' }}>
+      <div style={{ fontSize: '13px', fontWeight: '700', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Outreach Tracker</div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginBottom: '8px' }}>
+        <CounterBox label="Calls" emoji="📞" field="calls" value={touchpoints.calls || 0} />
+        <CounterBox label="Texts" emoji="💬" field="texts" value={touchpoints.texts || 0} />
+        <CounterBox label="Emails" emoji="📧" field="emails" value={touchpoints.emails || 0} />
+      </div>
+      {/* Walkaround video toggle */}
+      <div
+        onClick={() => updateTouchpoint('walkaround', !touchpoints.walkaround)}
+        style={{
+          display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 14px',
+          background: touchpoints.walkaround ? '#111' : '#fafafa',
+          border: `1px solid ${touchpoints.walkaround ? '#111' : '#e0e0e0'}`,
+          borderRadius: '10px', cursor: 'pointer', transition: 'all .15s',
+        }}>
+        <div style={{ fontSize: '22px' }}>🎥</div>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: '13px', fontWeight: '700', color: touchpoints.walkaround ? 'white' : '#111' }}>Walkaround Video Sent</div>
+          <div style={{ fontSize: '11px', color: touchpoints.walkaround ? '#aaa' : '#999', marginTop: '1px' }}>
+            {touchpoints.walkaround ? 'Sent ✓' : 'Tap to mark as sent'}
+          </div>
+        </div>
+        <div style={{
+          width: '22px', height: '22px', borderRadius: '50%', border: `2px solid ${touchpoints.walkaround ? 'white' : '#ddd'}`,
+          background: touchpoints.walkaround ? 'white' : 'transparent',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          {touchpoints.walkaround && <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#111' }} />}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Stage Drawer ──────────────────────────────────────────
 function StageDrawer({ stage, leads, onClose, isManager, onSelectLead }) {
   const stageLeads = leads.filter(l => l.stage === stage);
@@ -249,29 +309,39 @@ function StageDrawer({ stage, leads, onClose, isManager, onSelectLead }) {
           {stageLeads.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '40px', color: '#999', fontSize: '14px' }}>No leads in this stage</div>
           ) : (
-            stageLeads.map(lead => (
-              <div key={lead.id} onClick={() => { onSelectLead(lead); onClose(); }} style={{
-                background: '#fafafa', border: '1px solid #e0e0e0', borderRadius: '10px',
-                padding: '12px 14px', cursor: 'pointer', borderLeft: `4px solid ${stageColors[stage]}`,
-              }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <div>
-                    <div style={{ fontWeight: '700', fontSize: '15px' }}>{lead.name}</div>
-                    <div style={{ fontSize: '13px', color: '#666', marginTop: '2px' }}>{lead.vehicle}</div>
-                    {lead.phone && <div style={{ fontSize: '12px', color: '#999', marginTop: '2px' }}>{lead.phone}</div>}
+            stageLeads.map(lead => {
+              const tp = lead.touchpoints || {};
+              const totalTouches = (tp.calls || 0) + (tp.texts || 0) + (tp.emails || 0);
+              return (
+                <div key={lead.id} onClick={() => { onSelectLead(lead); onClose(); }} style={{
+                  background: '#fafafa', border: '1px solid #e0e0e0', borderRadius: '10px',
+                  padding: '12px 14px', cursor: 'pointer', borderLeft: `4px solid ${stageColors[stage]}`,
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <div>
+                      <div style={{ fontWeight: '700', fontSize: '15px' }}>{lead.name}</div>
+                      <div style={{ fontSize: '13px', color: '#666', marginTop: '2px' }}>{lead.vehicle}</div>
+                      {lead.phone && <div style={{ fontSize: '12px', color: '#999', marginTop: '2px' }}>{lead.phone}</div>}
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontSize: '14px', fontWeight: '700' }}>${lead.price?.toLocaleString()}</div>
+                      <div style={{ padding: '2px 8px', borderRadius: '20px', fontSize: '11px', fontWeight: '700', background: statusColors[lead.status] + '22', color: statusColors[lead.status], marginTop: '4px', display: 'inline-block' }}>{lead.status}</div>
+                    </div>
                   </div>
-                  <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontSize: '14px', fontWeight: '700' }}>${lead.price?.toLocaleString()}</div>
-                    <div style={{ padding: '2px 8px', borderRadius: '20px', fontSize: '11px', fontWeight: '700', background: statusColors[lead.status] + '22', color: statusColors[lead.status], marginTop: '4px', display: 'inline-block' }}>{lead.status}</div>
+                  <div style={{ display: 'flex', gap: '10px', marginTop: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+                    {isManager && <span style={{ fontSize: '12px', fontWeight: '600', color: '#555' }}>👤 {lead.rep}</span>}
+                    <span style={{ fontSize: '12px', color: '#888' }}>{lead.source}</span>
+                    {lead.followUp && <span style={{ fontSize: '11px', color: BRAND, fontWeight: '600' }}>📅 {new Date(lead.followUp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>}
+                    {totalTouches > 0 && (
+                      <span style={{ fontSize: '11px', color: '#666', background: '#f0f0f0', padding: '2px 8px', borderRadius: '10px' }}>
+                        {tp.calls > 0 ? `📞${tp.calls} ` : ''}{tp.texts > 0 ? `💬${tp.texts} ` : ''}{tp.emails > 0 ? `📧${tp.emails}` : ''}
+                      </span>
+                    )}
+                    {tp.walkaround && <span style={{ fontSize: '11px', color: '#3B6D11', fontWeight: '600' }}>🎥 Sent</span>}
                   </div>
                 </div>
-                <div style={{ display: 'flex', gap: '10px', marginTop: '8px', flexWrap: 'wrap' }}>
-                  {isManager && <span style={{ fontSize: '12px', fontWeight: '600', color: '#555' }}>👤 {lead.rep}</span>}
-                  <span style={{ fontSize: '12px', color: '#888' }}>{lead.source}</span>
-                  {lead.followUp && <span style={{ fontSize: '11px', color: BRAND, fontWeight: '600' }}>📅 {new Date(lead.followUp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>}
-                </div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
       </div>
@@ -343,6 +413,7 @@ function LeadDetail({ lead, onClose, currentRep }) {
         <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: '24px', cursor: 'pointer', color: '#999', padding: '0 0 0 12px' }}>✕</button>
       </div>
 
+      {/* Stage */}
       <div style={{ background: BRAND_LIGHT, borderRadius: '10px', padding: '14px', marginBottom: '20px', borderLeft: `4px solid ${BRAND}` }}>
         <div style={{ fontSize: '11px', color: '#888', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Pipeline Stage</div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -352,6 +423,10 @@ function LeadDetail({ lead, onClose, currentRep }) {
         </div>
       </div>
 
+      {/* Outreach Tracker */}
+      <TouchpointTracker lead={lead} />
+
+      {/* Contact Info */}
       <div style={{ marginBottom: '20px' }}>
         <div style={{ fontSize: '13px', fontWeight: '700', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Contact Info</div>
         <EditableField label="Phone" field="phone" value={lead.phone} />
@@ -359,6 +434,7 @@ function LeadDetail({ lead, onClose, currentRep }) {
         <EditableField label="Assigned Rep" field="rep" value={lead.rep} />
       </div>
 
+      {/* Deal Info */}
       <div style={{ marginBottom: '20px' }}>
         <div style={{ fontSize: '13px', fontWeight: '700', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Deal Info</div>
         <EditableField label="Vehicle" field="vehicle" value={lead.vehicle} />
@@ -372,6 +448,7 @@ function LeadDetail({ lead, onClose, currentRep }) {
         </div>
       </div>
 
+      {/* Follow-up */}
       <div style={{ marginBottom: '20px' }}>
         <div style={{ fontSize: '13px', fontWeight: '700', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Follow-up Date</div>
         <div style={{ display: 'flex', gap: '8px' }}>
@@ -381,6 +458,7 @@ function LeadDetail({ lead, onClose, currentRep }) {
         {lead.followUp && <div style={{ fontSize: '12px', color: BRAND, marginTop: '6px', fontWeight: '600' }}>📅 {new Date(lead.followUp).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>}
       </div>
 
+      {/* Notes */}
       <div style={{ marginBottom: '20px' }}>
         <div style={{ fontSize: '13px', fontWeight: '700', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Add Note</div>
         <textarea value={note} onChange={e => setNote(e.target.value)} placeholder="Type a note..."
@@ -388,6 +466,7 @@ function LeadDetail({ lead, onClose, currentRep }) {
         <button onClick={saveNote} style={{ ...btnPrimary, marginTop: '8px' }}>Save Note</button>
       </div>
 
+      {/* Activity */}
       {(lead.activity || []).length > 0 && (
         <div>
           <div style={{ fontSize: '13px', fontWeight: '700', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Activity</div>
@@ -450,16 +529,14 @@ function LeadsPage({ leads, rules, isManager, currentRep, addNotification }) {
     return () => clearInterval(interval);
   }, [leads, currentRep, addNotification]);
 
-  // Filter leads based on view selector
   const visibleLeads = viewAs === 'All' ? leads : leads.filter(l => l.rep === viewAs);
-
   function handleChange(e) { setForm({ ...form, [e.target.name]: e.target.value }); }
 
   async function handleAddLead() {
     if (!form.name || !form.vehicle || !form.price) { alert('Please fill in name, vehicle, and price.'); return; }
     const price = parseFloat(form.price);
     const assignedRep = manualRep ? form.rep : assignRep(price, rules);
-    await addDoc(collection(db, 'leads'), { ...form, price, stage: 'New Lead', rep: assignedRep, createdAt: Date.now(), activity: [] });
+    await addDoc(collection(db, 'leads'), { ...form, price, stage: 'New Lead', rep: assignedRep, createdAt: Date.now(), activity: [], touchpoints: { calls: 0, texts: 0, emails: 0, walkaround: false } });
     sendNotification('🚗 New Lead', `${form.name} assigned to ${assignedRep}`);
     addNotification('🚗 New Lead', `${form.name} — ${form.vehicle} assigned to ${assignedRep}`);
     setForm(emptyForm); setShowForm(false); setManualRep(false);
@@ -500,7 +577,6 @@ function LeadsPage({ leads, rules, isManager, currentRep, addNotification }) {
         <button onClick={() => setShowForm(!showForm)} style={btnPrimary}>{showForm ? 'Cancel' : '+ Add Lead'}</button>
       </div>
 
-      {/* Manager view selector */}
       {isManager && (
         <div style={{ display: 'flex', gap: '6px', marginBottom: '16px', flexWrap: 'wrap' }}>
           {viewOptions.map(opt => (
@@ -515,7 +591,6 @@ function LeadsPage({ leads, rules, isManager, currentRep, addNotification }) {
         </div>
       )}
 
-      {/* Stage cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginBottom: '20px' }}>
         {STAGES.map(stage => {
           const count = visibleLeads.filter(l => l.stage === stage).length;
@@ -576,38 +651,48 @@ function LeadsPage({ leads, rules, isManager, currentRep, addNotification }) {
       )}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-        {visibleLeads.map(lead => (
-          <div key={lead.id} onClick={() => setSelectedLead(lead)} style={{
-            background: selectedLead?.id === lead.id ? BRAND_LIGHT : 'white',
-            border: `2px solid ${selectedLead?.id === lead.id ? BRAND : '#e0e0e0'}`,
-            borderRadius: '10px', padding: '12px 14px', cursor: 'pointer',
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
-              <div>
-                <div style={{ fontWeight: '700', fontSize: '15px' }}>{lead.name}</div>
-                <div style={{ fontSize: '13px', color: '#666', marginTop: '2px' }}>{lead.vehicle}</div>
-                {lead.phone && <div style={{ fontSize: '12px', color: '#999', marginTop: '2px' }}>{lead.phone}</div>}
+        {visibleLeads.map(lead => {
+          const tp = lead.touchpoints || {};
+          const totalTouches = (tp.calls || 0) + (tp.texts || 0) + (tp.emails || 0);
+          return (
+            <div key={lead.id} onClick={() => setSelectedLead(lead)} style={{
+              background: selectedLead?.id === lead.id ? BRAND_LIGHT : 'white',
+              border: `2px solid ${selectedLead?.id === lead.id ? BRAND : '#e0e0e0'}`,
+              borderRadius: '10px', padding: '12px 14px', cursor: 'pointer',
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+                <div>
+                  <div style={{ fontWeight: '700', fontSize: '15px' }}>{lead.name}</div>
+                  <div style={{ fontSize: '13px', color: '#666', marginTop: '2px' }}>{lead.vehicle}</div>
+                  {lead.phone && <div style={{ fontSize: '12px', color: '#999', marginTop: '2px' }}>{lead.phone}</div>}
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontSize: '14px', fontWeight: '700' }}>${lead.price?.toLocaleString()}</div>
+                  <div style={{ padding: '2px 8px', borderRadius: '20px', fontSize: '11px', fontWeight: '700', background: statusColors[lead.status] + '22', color: statusColors[lead.status], marginTop: '4px', display: 'inline-block' }}>{lead.status}</div>
+                </div>
               </div>
-              <div style={{ textAlign: 'right' }}>
-                <div style={{ fontSize: '14px', fontWeight: '700' }}>${lead.price?.toLocaleString()}</div>
-                <div style={{ padding: '2px 8px', borderRadius: '20px', fontSize: '11px', fontWeight: '700', background: statusColors[lead.status] + '22', color: statusColors[lead.status], marginTop: '4px', display: 'inline-block' }}>{lead.status}</div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px' }}>
+                <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '12px', color: '#888' }}>{lead.source}</span>
+                  {viewAs === 'All' && <span style={{ fontSize: '12px', fontWeight: '600' }}>{lead.rep}</span>}
+                  {lead.followUp && <span style={{ fontSize: '11px', color: BRAND, fontWeight: '600' }}>📅 {new Date(lead.followUp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>}
+                  {totalTouches > 0 && (
+                    <span style={{ fontSize: '11px', color: '#666', background: '#f0f0f0', padding: '2px 7px', borderRadius: '10px' }}>
+                      {tp.calls > 0 ? `📞${tp.calls} ` : ''}{tp.texts > 0 ? `💬${tp.texts} ` : ''}{tp.emails > 0 ? `📧${tp.emails}` : ''}
+                    </span>
+                  )}
+                  {tp.walkaround && <span style={{ fontSize: '11px', color: '#3B6D11', fontWeight: '600' }}>🎥</span>}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <button onClick={e => regressStage(lead, e)} style={{ background: '#f5f5f5', border: '1px solid #ddd', borderRadius: '6px', padding: '4px 10px', cursor: 'pointer', fontWeight: '700' }}>←</button>
+                  <div style={{ padding: '3px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: '700', background: stageColors[lead.stage] + '22', color: stageColors[lead.stage], whiteSpace: 'nowrap' }}>{lead.stage}</div>
+                  <button onClick={e => advanceStage(lead, e)} style={{ background: '#f5f5f5', border: '1px solid #ddd', borderRadius: '6px', padding: '4px 10px', cursor: 'pointer', fontWeight: '700' }}>→</button>
+                  <button onClick={e => deleteLead(lead.id, e)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ccc', fontSize: '16px' }}>✕</button>
+                </div>
               </div>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px' }}>
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-                <span style={{ fontSize: '12px', color: '#888' }}>{lead.source}</span>
-                {viewAs === 'All' && <span style={{ fontSize: '12px', fontWeight: '600' }}>{lead.rep}</span>}
-                {lead.followUp && <span style={{ fontSize: '11px', color: BRAND, fontWeight: '600' }}>📅 {new Date(lead.followUp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>}
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <button onClick={e => regressStage(lead, e)} style={{ background: '#f5f5f5', border: '1px solid #ddd', borderRadius: '6px', padding: '4px 10px', cursor: 'pointer', fontWeight: '700' }}>←</button>
-                <div style={{ padding: '3px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: '700', background: stageColors[lead.stage] + '22', color: stageColors[lead.stage], whiteSpace: 'nowrap' }}>{lead.stage}</div>
-                <button onClick={e => advanceStage(lead, e)} style={{ background: '#f5f5f5', border: '1px solid #ddd', borderRadius: '6px', padding: '4px 10px', cursor: 'pointer', fontWeight: '700' }}>→</button>
-                <button onClick={e => deleteLead(lead.id, e)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ccc', fontSize: '16px' }}>✕</button>
-              </div>
-            </div>
-          </div>
-        ))}
+          );
+        })}
         {visibleLeads.length === 0 && (
           <div style={{ textAlign: 'center', padding: '40px', color: '#999', background: 'white', borderRadius: '10px', border: '1px solid #e0e0e0' }}>
             No leads yet — tap + Add Lead to get started
@@ -624,7 +709,6 @@ function LeadsPage({ leads, rules, isManager, currentRep, addNotification }) {
           onSelectLead={lead => setSelectedLead(lead)}
         />
       )}
-
       {selectedLead && <LeadDetail lead={selectedLead} onClose={() => setSelectedLead(null)} currentRep={currentRep} />}
     </div>
   );
