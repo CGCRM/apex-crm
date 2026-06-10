@@ -157,13 +157,8 @@ function Notepad({ userId }) {
         fontSize: '22px', cursor: 'pointer', boxShadow: '0 4px 16px rgba(0,0,0,0.25)',
         zIndex: 150, display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}>📝</button>
-
       {open && (
-        <div style={{
-          position: 'fixed', bottom: '88px', right: '24px', width: '300px',
-          background: 'white', border: '2px solid #111', borderRadius: '12px',
-          boxShadow: '0 8px 32px rgba(0,0,0,0.15)', zIndex: 150, overflow: 'hidden',
-        }}>
+        <div style={{ position: 'fixed', bottom: '88px', right: '24px', width: '300px', background: 'white', border: '2px solid #111', borderRadius: '12px', boxShadow: '0 8px 32px rgba(0,0,0,0.15)', zIndex: 150, overflow: 'hidden' }}>
           <div style={{ background: BRAND, padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div style={{ color: 'white', fontWeight: '700', fontSize: '13px' }}>📝 My Notes</div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -171,16 +166,8 @@ function Notepad({ userId }) {
               <button onClick={() => setOpen(false)} style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', fontSize: '16px' }}>✕</button>
             </div>
           </div>
-          <textarea
-            value={text}
-            onChange={e => setText(e.target.value)}
-            placeholder="Daily goals, reminders, follow-up ideas..."
-            style={{
-              width: '100%', height: '280px', padding: '14px', border: 'none',
-              fontSize: '14px', fontFamily: 'sans-serif', resize: 'none',
-              boxSizing: 'border-box', outline: 'none', lineHeight: '1.6',
-            }}
-          />
+          <textarea value={text} onChange={e => setText(e.target.value)} placeholder="Daily goals, reminders, follow-up ideas..."
+            style={{ width: '100%', height: '280px', padding: '14px', border: 'none', fontSize: '14px', fontFamily: 'sans-serif', resize: 'none', boxSizing: 'border-box', outline: 'none', lineHeight: '1.6' }} />
         </div>
       )}
     </>
@@ -230,6 +217,69 @@ function NavBar({ page, setPage, isManager }) {
           fontWeight: '600', borderRadius: '6px 6px 0 0', marginBottom: '-2px', whiteSpace: 'nowrap',
         }}>{tab}</button>
       ))}
+    </div>
+  );
+}
+
+// ─── Stage Drawer ──────────────────────────────────────────
+function StageDrawer({ stage, leads, onClose, isManager, currentRep, onSelectLead }) {
+  const stageLeads = leads.filter(l => l.stage === stage);
+  const totalValue = stageLeads.reduce((s, l) => s + (l.price || 0), 0);
+
+  return (
+    <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 300, display: 'flex', flexDirection: 'column' }}>
+      {/* Backdrop */}
+      <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.5)' }} />
+      {/* Drawer */}
+      <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'white', borderRadius: '16px 16px 0 0', maxHeight: '80vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        {/* Handle */}
+        <div style={{ display: 'flex', justifyContent: 'center', padding: '10px 0 0' }}>
+          <div style={{ width: '40px', height: '4px', background: '#ddd', borderRadius: '2px' }} />
+        </div>
+        {/* Header */}
+        <div style={{ padding: '14px 20px', borderBottom: '1px solid #e0e0e0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: stageColors[stage] }} />
+              <div style={{ fontSize: '16px', fontWeight: '800' }}>{stage}</div>
+            </div>
+            <div style={{ fontSize: '12px', color: '#888', marginTop: '2px' }}>
+              {stageLeads.length} lead{stageLeads.length !== 1 ? 's' : ''} · ${(totalValue / 1000).toFixed(0)}k total
+            </div>
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: '22px', cursor: 'pointer', color: '#999' }}>✕</button>
+        </div>
+        {/* Lead list */}
+        <div style={{ overflowY: 'auto', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          {stageLeads.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '40px', color: '#999', fontSize: '14px' }}>No leads in this stage</div>
+          ) : (
+            stageLeads.map(lead => (
+              <div key={lead.id} onClick={() => { onSelectLead(lead); onClose(); }} style={{
+                background: '#fafafa', border: '1px solid #e0e0e0', borderRadius: '10px',
+                padding: '12px 14px', cursor: 'pointer', borderLeft: `4px solid ${stageColors[stage]}`,
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <div>
+                    <div style={{ fontWeight: '700', fontSize: '15px' }}>{lead.name}</div>
+                    <div style={{ fontSize: '13px', color: '#666', marginTop: '2px' }}>{lead.vehicle}</div>
+                    {lead.phone && <div style={{ fontSize: '12px', color: '#999', marginTop: '2px' }}>{lead.phone}</div>}
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontSize: '14px', fontWeight: '700' }}>${lead.price?.toLocaleString()}</div>
+                    <div style={{ padding: '2px 8px', borderRadius: '20px', fontSize: '11px', fontWeight: '700', background: statusColors[lead.status] + '22', color: statusColors[lead.status], marginTop: '4px', display: 'inline-block' }}>{lead.status}</div>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: '10px', marginTop: '8px', flexWrap: 'wrap' }}>
+                  {isManager && <span style={{ fontSize: '12px', fontWeight: '600', color: '#555' }}>👤 {lead.rep}</span>}
+                  <span style={{ fontSize: '12px', color: '#888' }}>{lead.source}</span>
+                  {lead.followUp && <span style={{ fontSize: '11px', color: BRAND, fontWeight: '600' }}>📅 {new Date(lead.followUp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -369,6 +419,7 @@ function LeadsPage({ leads, rules, isManager, currentRep, addNotification }) {
   const [form, setForm] = useState(emptyForm);
   const [manualRep, setManualRep] = useState(false);
   const [selectedLead, setSelectedLead] = useState(null);
+  const [activeStage, setActiveStage] = useState(null);
 
   useEffect(() => {
     if (selectedLead) {
@@ -447,15 +498,21 @@ function LeadsPage({ leads, rules, isManager, currentRep, addNotification }) {
         <button onClick={() => setShowForm(!showForm)} style={btnPrimary}>{showForm ? 'Cancel' : '+ Add Lead'}</button>
       </div>
 
+      {/* Clickable stage cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginBottom: '20px' }}>
         {STAGES.map(stage => {
           const count = visibleLeads.filter(l => l.stage === stage).length;
           const value = visibleLeads.filter(l => l.stage === stage).reduce((s, l) => s + l.price, 0);
           return (
-            <div key={stage} style={{ background: 'white', border: '1px solid #e0e0e0', borderRadius: '10px', padding: '10px', borderTop: `3px solid ${stageColors[stage]}` }}>
+            <div key={stage} onClick={() => setActiveStage(stage)} style={{
+              background: 'white', border: '1px solid #e0e0e0', borderRadius: '10px',
+              padding: '10px', borderTop: `3px solid ${stageColors[stage]}`,
+              cursor: 'pointer', transition: 'all .15s',
+            }}>
               <div style={{ fontSize: '10px', color: '#666', marginBottom: '4px' }}>{stage}</div>
               <div style={{ fontSize: '18px', fontWeight: '700' }}>{count}</div>
               {value > 0 && <div style={{ fontSize: '10px', color: '#888' }}>${(value / 1000).toFixed(0)}k</div>}
+              {count > 0 && <div style={{ fontSize: '10px', color: stageColors[stage], marginTop: '4px', fontWeight: '600' }}>tap to view →</div>}
             </div>
           );
         })}
@@ -545,6 +602,17 @@ function LeadsPage({ leads, rules, isManager, currentRep, addNotification }) {
           </div>
         )}
       </div>
+
+      {activeStage && (
+        <StageDrawer
+          stage={activeStage}
+          leads={visibleLeads}
+          onClose={() => setActiveStage(null)}
+          isManager={isManager}
+          currentRep={currentRep}
+          onSelectLead={lead => setSelectedLead(lead)}
+        />
+      )}
 
       {selectedLead && <LeadDetail lead={selectedLead} onClose={() => setSelectedLead(null)} currentRep={currentRep} />}
     </div>
