@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot } from 'firebase/firestore';
+import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth';
 
 const firebaseConfig = {
   apiKey: "AIzaSyA4JkTKNdjMx5KlZGBRdGJGnQvSz9HMED0",
@@ -13,6 +14,16 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
+const auth = getAuth(app);
+
+// Manager UIDs — only these emails get full access
+const MANAGER_UIDS = ['DD4YST73YdU7JUXgxS5yZEMYmlg2'];
+
+// Map email to rep name
+const EMAIL_TO_REP = {
+  'tfrost@carguyzmotors.com': 'Taylor',
+  'twiggins@carguyzmotors.com': 'Manager',
+};
 
 const BRAND = '#111111';
 const BRAND_LIGHT = '#f2f2f2';
@@ -41,7 +52,7 @@ const inventoryStatusColors = {
   Sold: '#999',
 };
 
-const REPS = ['Ty', 'Phil', 'Taylor'];
+const REPS = ['Ty', 'Taylor'];
 const ALL_REPS = [...REPS, 'Unassigned'];
 const sources = ['AutoTrader', 'Cars.com', 'Website', 'Walk-in', 'Referral', 'CarGurus'];
 const statuses = ['New', 'Hot', 'Warm', 'Cold'];
@@ -49,8 +60,8 @@ const emptyForm = { name: '', vehicle: '', price: '', status: 'New', rep: 'Unass
 const emptyVehicle = { stockNum: '', vin: '', year: '', make: '', model: '', color: '', miles: '', listPrice: '', buyPrice: '', inventoryStatus: 'Available' };
 
 const initialRules = [
-  { id: 1, label: 'Exotics', minPrice: 250000, maxPrice: 999999999, reps: ['Ty', 'Phil'], mode: 'round-robin' },
-  { id: 2, label: 'Luxury', minPrice: 0, maxPrice: 249999, reps: ['Ty', 'Phil', 'Taylor'], mode: 'round-robin' },
+  { id: 1, label: 'Exotics', minPrice: 250000, maxPrice: 999999999, reps: ['Ty', 'Taylor'], mode: 'round-robin' },
+  { id: 2, label: 'Luxury', minPrice: 0, maxPrice: 249999, reps: ['Ty', 'Taylor'], mode: 'round-robin' },
 ];
 
 const rrCounters = {};
@@ -84,9 +95,73 @@ const inputStyle = {
   border: '1px solid #ddd', fontSize: '14px', boxSizing: 'border-box',
 };
 
+// ─── Login Page ────────────────────────────────────────────
+function LoginPage() {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  async function handleLogin() {
+    if (!email || !password) { setError('Please enter your email and password.'); return; }
+    setLoading(true);
+    setError('');
+    try {
+      await signInWithEmailAndPassword(auth, email, password);
+    } catch (e) {
+      setError('Invalid email or password. Please try again.');
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div style={{
+      minHeight: '100vh', background: BRAND, display: 'flex',
+      alignItems: 'center', justifyContent: 'center', fontFamily: 'sans-serif',
+    }}>
+      <div style={{ width: '100%', maxWidth: '380px', padding: '24px' }}>
+        <div style={{ textAlign: 'center', marginBottom: '32px' }}>
+          <div style={{
+            display: 'inline-block', background: 'white', color: BRAND,
+            fontWeight: '800', fontSize: '18px', padding: '10px 20px',
+            borderRadius: '8px', letterSpacing: '2px', marginBottom: '12px',
+          }}>CGM</div>
+          <div style={{ color: 'white', fontSize: '20px', fontWeight: '800', letterSpacing: '1px' }}>CAR GUYZ MOTORS</div>
+          <div style={{ color: '#888', fontSize: '13px', marginTop: '4px' }}>Internal CRM · Sign in to continue</div>
+        </div>
+
+        <div style={{ background: 'white', borderRadius: '12px', padding: '28px' }}>
+          <div style={{ marginBottom: '16px' }}>
+            <label style={{ fontSize: '12px', fontWeight: '600', color: '#666', display: 'block', marginBottom: '6px' }}>EMAIL</label>
+            <input
+              type="email" value={email} onChange={e => setEmail(e.target.value)}
+              placeholder="you@carguyzmotors.com"
+              onKeyDown={e => e.key === 'Enter' && handleLogin()}
+              style={inputStyle}
+            />
+          </div>
+          <div style={{ marginBottom: '20px' }}>
+            <label style={{ fontSize: '12px', fontWeight: '600', color: '#666', display: 'block', marginBottom: '6px' }}>PASSWORD</label>
+            <input
+              type="password" value={password} onChange={e => setPassword(e.target.value)}
+              placeholder="••••••••"
+              onKeyDown={e => e.key === 'Enter' && handleLogin()}
+              style={inputStyle}
+            />
+          </div>
+          {error && <div style={{ color: '#993C1D', fontSize: '13px', marginBottom: '14px', fontWeight: '500' }}>{error}</div>}
+          <button onClick={handleLogin} disabled={loading} style={{ ...btnPrimary, width: '100%', padding: '12px', fontSize: '15px' }}>
+            {loading ? 'Signing in...' : 'Sign In'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Nav Bar ───────────────────────────────────────────────
-function NavBar({ page, setPage }) {
-  const tabs = ['Leads', 'Inventory', 'Reps', 'Settings'];
+function NavBar({ page, setPage, isManager }) {
+  const tabs = isManager ? ['Leads', 'Inventory', 'Reps', 'Settings'] : ['Leads', 'Inventory'];
   return (
     <div style={{ display: 'flex', gap: '4px', marginBottom: '24px', borderBottom: '2px solid #111' }}>
       {tabs.map(tab => (
@@ -95,9 +170,7 @@ function NavBar({ page, setPage }) {
           color: page === tab ? 'white' : '#555',
           border: 'none', padding: '10px 20px', cursor: 'pointer',
           fontSize: '14px', fontWeight: '600',
-          borderRadius: '6px 6px 0 0',
-          marginBottom: '-2px',
-          transition: 'all .15s',
+          borderRadius: '6px 6px 0 0', marginBottom: '-2px',
         }}>{tab}</button>
       ))}
     </div>
@@ -113,8 +186,7 @@ function LeadDetail({ lead, onClose }) {
 
   async function saveNote() {
     if (!note.trim()) return;
-    const newActivity = { text: note, ts: Date.now(), type: 'note' };
-    const activity = [...(lead.activity || []), newActivity];
+    const activity = [...(lead.activity || []), { text: note, ts: Date.now(), type: 'note' }];
     await updateDoc(doc(db, 'leads', lead.id), { activity });
     setNote('');
   }
@@ -249,7 +321,7 @@ function LeadDetail({ lead, onClose }) {
 }
 
 // ─── Leads Page ────────────────────────────────────────────
-function LeadsPage({ leads, rules }) {
+function LeadsPage({ leads, rules, isManager, currentRep }) {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [manualRep, setManualRep] = useState(false);
@@ -260,14 +332,17 @@ function LeadsPage({ leads, rules }) {
       const updated = leads.find(l => l.id === selectedLead.id);
       if (updated) setSelectedLead(updated);
     }
-}, [leads, selectedLead]);
+  }, [leads, selectedLead]);
+
+  // Filter leads by rep if not manager
+  const visibleLeads = isManager ? leads : leads.filter(l => l.rep === currentRep);
 
   function handleChange(e) { setForm({ ...form, [e.target.name]: e.target.value }); }
 
   async function handleAddLead() {
     if (!form.name || !form.vehicle || !form.price) { alert('Please fill in name, vehicle, and price.'); return; }
     const price = parseFloat(form.price);
-    const assignedRep = manualRep ? form.rep : assignRep(price, rules);
+    const assignedRep = manualRep ? form.rep : (isManager ? assignRep(price, rules) : currentRep);
     await addDoc(collection(db, 'leads'), {
       ...form, price, stage: 'New Lead', rep: assignedRep, createdAt: Date.now(), activity: []
     });
@@ -299,14 +374,16 @@ function LeadsPage({ leads, rules }) {
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-        <h2 style={{ margin: 0, fontSize: '16px', fontWeight: '700' }}>Leads ({leads.length})</h2>
+        <h2 style={{ margin: 0, fontSize: '16px', fontWeight: '700' }}>
+          {isManager ? `All Leads (${visibleLeads.length})` : `My Leads (${visibleLeads.length})`}
+        </h2>
         <button onClick={() => setShowForm(!showForm)} style={btnPrimary}>{showForm ? 'Cancel' : '+ Add Lead'}</button>
       </div>
 
       <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', flexWrap: 'wrap' }}>
         {STAGES.map(stage => {
-          const count = leads.filter(l => l.stage === stage).length;
-          const value = leads.filter(l => l.stage === stage).reduce((s, l) => s + l.price, 0);
+          const count = visibleLeads.filter(l => l.stage === stage).length;
+          const value = visibleLeads.filter(l => l.stage === stage).reduce((s, l) => s + l.price, 0);
           return (
             <div key={stage} style={{
               flex: 1, minWidth: '100px', background: 'white', border: '1px solid #e0e0e0',
@@ -323,7 +400,9 @@ function LeadsPage({ leads, rules }) {
       {showForm && (
         <div style={{ background: 'white', border: '2px solid #111', borderRadius: '12px', padding: '20px', marginBottom: '20px' }}>
           <h3 style={{ margin: '0 0 4px', fontSize: '15px', fontWeight: '700' }}>New Lead</h3>
-          <p style={{ margin: '0 0 16px', fontSize: '12px', color: '#666' }}>Rep auto-assigned by price unless you override.</p>
+          <p style={{ margin: '0 0 16px', fontSize: '12px', color: '#666' }}>
+            {isManager ? 'Rep auto-assigned by price unless you override.' : `This lead will be assigned to you (${currentRep}).`}
+          </p>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
             {[
               { label: 'Customer Name', name: 'name', type: 'text', placeholder: 'Full name' },
@@ -348,36 +427,38 @@ function LeadsPage({ leads, rules }) {
                 </select>
               </div>
             ))}
-            <div>
-              <label style={{ fontSize: '12px', color: '#666', display: 'block', marginBottom: '4px', fontWeight: '600' }}>
-                Assigned Rep
-                <span onClick={() => setManualRep(!manualRep)} style={{ marginLeft: '8px', color: BRAND, cursor: 'pointer', textDecoration: 'underline' }}>
-                  {manualRep ? '(use auto-assign)' : '(override)'}
-                </span>
-              </label>
-              {manualRep ? (
-                <select name="rep" value={form.rep} onChange={handleChange} style={inputStyle}>
-                  {ALL_REPS.map(o => <option key={o}>{o}</option>)}
-                </select>
-              ) : (
-                <div style={{ ...inputStyle, color: '#888', background: '#fafafa' }}>
-                  {form.price ? `Will assign → ${assignRep(parseFloat(form.price), rules)}` : 'Enter price to preview'}
-                </div>
-              )}
-            </div>
+            {isManager && (
+              <div>
+                <label style={{ fontSize: '12px', color: '#666', display: 'block', marginBottom: '4px', fontWeight: '600' }}>
+                  Assigned Rep
+                  <span onClick={() => setManualRep(!manualRep)} style={{ marginLeft: '8px', color: BRAND, cursor: 'pointer', textDecoration: 'underline' }}>
+                    {manualRep ? '(use auto-assign)' : '(override)'}
+                  </span>
+                </label>
+                {manualRep ? (
+                  <select name="rep" value={form.rep} onChange={handleChange} style={inputStyle}>
+                    {ALL_REPS.map(o => <option key={o}>{o}</option>)}
+                  </select>
+                ) : (
+                  <div style={{ ...inputStyle, color: '#888', background: '#fafafa' }}>
+                    {form.price ? `Will assign → ${assignRep(parseFloat(form.price), rules)}` : 'Enter price to preview'}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
           <button onClick={handleAddLead} style={{ ...btnPrimary, marginTop: '16px', padding: '10px 20px' }}>Save Lead</button>
         </div>
       )}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-        {leads.map(lead => (
+        {visibleLeads.map(lead => (
           <div key={lead.id} onClick={() => setSelectedLead(lead)} style={{
             background: selectedLead?.id === lead.id ? BRAND_LIGHT : 'white',
             border: `2px solid ${selectedLead?.id === lead.id ? BRAND : '#e0e0e0'}`,
             borderRadius: '10px', padding: '14px 18px',
             display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap',
-            cursor: 'pointer', transition: 'all .15s',
+            cursor: 'pointer',
           }}>
             <div style={{ flex: 1, minWidth: '160px' }}>
               <div style={{ fontWeight: '700', fontSize: '15px' }}>{lead.name}</div>
@@ -390,7 +471,7 @@ function LeadsPage({ leads, rules }) {
               background: statusColors[lead.status] + '22', color: statusColors[lead.status],
             }}>{lead.status}</div>
             <div style={{ fontSize: '13px', color: '#666' }}>{lead.source}</div>
-            <div style={{ fontSize: '13px', fontWeight: '600', width: '80px' }}>{lead.rep}</div>
+            {isManager && <div style={{ fontSize: '13px', fontWeight: '600', width: '60px' }}>{lead.rep}</div>}
             {lead.followUp && (
               <div style={{ fontSize: '11px', color: BRAND, fontWeight: '600' }}>
                 📅 {new Date(lead.followUp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
@@ -404,9 +485,14 @@ function LeadsPage({ leads, rules }) {
               }}>{lead.stage}</div>
               <button onClick={e => advanceStage(lead, e)} style={{ background: '#f5f5f5', border: '1px solid #ddd', borderRadius: '6px', padding: '4px 8px', cursor: 'pointer', fontWeight: '700' }}>→</button>
             </div>
-            <button onClick={e => deleteLead(lead.id, e)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ccc', fontSize: '16px' }}>✕</button>
+            {isManager && <button onClick={e => deleteLead(lead.id, e)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ccc', fontSize: '16px' }}>✕</button>}
           </div>
         ))}
+        {visibleLeads.length === 0 && (
+          <div style={{ textAlign: 'center', padding: '40px', color: '#999', background: 'white', borderRadius: '10px', border: '1px solid #e0e0e0' }}>
+            No leads yet — click + Add Lead to get started
+          </div>
+        )}
       </div>
 
       {selectedLead && <LeadDetail lead={selectedLead} onClose={() => setSelectedLead(null)} />}
@@ -415,7 +501,7 @@ function LeadsPage({ leads, rules }) {
 }
 
 // ─── Inventory Page ────────────────────────────────────────
-function InventoryPage({ vehicles }) {
+function InventoryPage({ vehicles, isManager }) {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(emptyVehicle);
 
@@ -453,7 +539,7 @@ function InventoryPage({ vehicles }) {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
         <h2 style={{ margin: 0, fontSize: '16px', fontWeight: '700' }}>Inventory ({vehicles.length})</h2>
-        <button onClick={() => setShowForm(!showForm)} style={btnPrimary}>{showForm ? 'Cancel' : '+ Add Vehicle'}</button>
+        {isManager && <button onClick={() => setShowForm(!showForm)} style={btnPrimary}>{showForm ? 'Cancel' : '+ Add Vehicle'}</button>}
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px', marginBottom: '20px' }}>
@@ -470,7 +556,7 @@ function InventoryPage({ vehicles }) {
         ))}
       </div>
 
-      {showForm && (
+      {showForm && isManager && (
         <div style={{ background: 'white', border: '2px solid #111', borderRadius: '12px', padding: '20px', marginBottom: '20px' }}>
           <h3 style={{ margin: '0 0 16px', fontSize: '15px', fontWeight: '700' }}>Add Vehicle</h3>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
@@ -498,7 +584,7 @@ function InventoryPage({ vehicles }) {
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
         {vehicles.map(v => {
           const days = daysSince(v.createdAt);
-          const margin = v.listPrice && v.buyPrice ? v.listPrice - v.buyPrice : null;
+          const margin = isManager && v.listPrice && v.buyPrice ? v.listPrice - v.buyPrice : null;
           return (
             <div key={v.id} style={{
               background: 'white', border: '1px solid #e0e0e0', borderRadius: '10px',
@@ -517,9 +603,7 @@ function InventoryPage({ vehicles }) {
                 <div style={{ fontSize: '15px', fontWeight: '700' }}>${(v.listPrice || 0).toLocaleString()}</div>
                 {margin !== null && <div style={{ fontSize: '11px', color: '#3B6D11', marginTop: '2px', fontWeight: '600' }}>+${margin.toLocaleString()} margin</div>}
               </div>
-              <div style={{ fontSize: '12px', color: days > 30 ? '#993C1D' : '#888', fontWeight: days > 30 ? '700' : '400' }}>
-                {days}d on lot
-              </div>
+              <div style={{ fontSize: '12px', color: days > 30 ? '#993C1D' : '#888', fontWeight: days > 30 ? '700' : '400' }}>{days}d on lot</div>
               <select value={v.inventoryStatus} onChange={e => updateVehicleStatus(v.id, e.target.value)}
                 style={{
                   padding: '5px 10px', borderRadius: '20px', border: '1px solid #ddd',
@@ -531,13 +615,13 @@ function InventoryPage({ vehicles }) {
                 <option>Pending</option>
                 <option>Sold</option>
               </select>
-              <button onClick={() => deleteVehicle(v.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ccc', fontSize: '16px' }}>✕</button>
+              {isManager && <button onClick={() => deleteVehicle(v.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ccc', fontSize: '16px' }}>✕</button>}
             </div>
           );
         })}
         {vehicles.length === 0 && (
           <div style={{ textAlign: 'center', padding: '40px', color: '#999', background: 'white', borderRadius: '10px', border: '1px solid #e0e0e0' }}>
-            No vehicles yet — click + Add Vehicle to get started
+            No vehicles yet
           </div>
         )}
       </div>
@@ -657,13 +741,24 @@ function SettingsPage({ rules, setRules }) {
 
 // ─── App Root ──────────────────────────────────────────────
 function App() {
+  const [user, setUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
   const [page, setPage] = useState('Leads');
   const [leads, setLeads] = useState([]);
   const [vehicles, setVehicles] = useState([]);
   const [rules, setRules] = useState(initialRules);
-  const [loading, setLoading] = useState(true);
+  const [dataLoading, setDataLoading] = useState(true);
 
   useEffect(() => {
+    const unsub = onAuthStateChanged(auth, u => {
+      setUser(u);
+      setAuthLoading(false);
+    });
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    if (!user) return;
     let leadsLoaded = false;
     let inventoryLoaded = false;
 
@@ -672,7 +767,7 @@ function App() {
       data.sort((a, b) => b.createdAt - a.createdAt);
       setLeads(data);
       leadsLoaded = true;
-      if (leadsLoaded && inventoryLoaded) setLoading(false);
+      if (leadsLoaded && inventoryLoaded) setDataLoading(false);
     });
 
     const unsub2 = onSnapshot(collection(db, 'inventory'), snapshot => {
@@ -680,49 +775,59 @@ function App() {
       data.sort((a, b) => b.createdAt - a.createdAt);
       setVehicles(data);
       inventoryLoaded = true;
-      if (leadsLoaded && inventoryLoaded) setLoading(false);
+      if (leadsLoaded && inventoryLoaded) setDataLoading(false);
     });
 
     return () => { unsub1(); unsub2(); };
-  }, []);
+  }, [user]);
 
-  if (loading) return (
-    <div style={{
-      fontFamily: 'sans-serif', display: 'flex', flexDirection: 'column',
-      alignItems: 'center', justifyContent: 'center', height: '100vh', background: BRAND,
-    }}>
+  if (authLoading) return (
+    <div style={{ fontFamily: 'sans-serif', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', background: BRAND }}>
       <div style={{ color: 'white', fontSize: '22px', fontWeight: '700', letterSpacing: '1px' }}>CAR GUYZ MOTORS</div>
-      <div style={{ color: '#999', fontSize: '13px', marginTop: '8px' }}>Loading CRM...</div>
+      <div style={{ color: '#888', fontSize: '13px', marginTop: '8px' }}>Loading...</div>
+    </div>
+  );
+
+  if (!user) return <LoginPage />;
+
+  const isManager = MANAGER_UIDS.includes(user.uid);
+  const currentRep = EMAIL_TO_REP[user.email] || user.email;
+
+  if (dataLoading) return (
+    <div style={{ fontFamily: 'sans-serif', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', background: BRAND }}>
+      <div style={{ color: 'white', fontSize: '22px', fontWeight: '700', letterSpacing: '1px' }}>CAR GUYZ MOTORS</div>
+      <div style={{ color: '#888', fontSize: '13px', marginTop: '8px' }}>Loading CRM...</div>
     </div>
   );
 
   return (
     <div style={{ fontFamily: 'sans-serif', maxWidth: '980px', margin: '0 auto', padding: '24px' }}>
-      {/* Header */}
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         marginBottom: '24px', paddingBottom: '16px', borderBottom: '2px solid #111',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-          <div style={{
-            background: BRAND, color: 'white', fontWeight: '800', fontSize: '13px',
-            padding: '8px 14px', borderRadius: '6px', letterSpacing: '1px',
-          }}>CGM</div>
+          <div style={{ background: BRAND, color: 'white', fontWeight: '800', fontSize: '13px', padding: '8px 14px', borderRadius: '6px', letterSpacing: '1px' }}>CGM</div>
           <div>
             <div style={{ fontSize: '18px', fontWeight: '800', letterSpacing: '0.5px' }}>CAR GUYZ MOTORS</div>
-            <div style={{ fontSize: '12px', color: '#888' }}>American Fork, UT · Internal CRM</div>
+            <div style={{ fontSize: '12px', color: '#888' }}>
+              {isManager ? '👑 Manager View' : `👤 ${currentRep}`} · American Fork, UT
+            </div>
           </div>
         </div>
-        <div style={{ fontSize: '12px', color: '#aaa' }}>
-          {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{ fontSize: '12px', color: '#aaa' }}>{user.email}</div>
+          <button onClick={() => signOut(auth)} style={{ background: 'none', border: '1px solid #ddd', borderRadius: '7px', padding: '6px 12px', cursor: 'pointer', fontSize: '12px', color: '#666' }}>
+            Sign out
+          </button>
         </div>
       </div>
 
-      <NavBar page={page} setPage={setPage} />
-      {page === 'Leads' && <LeadsPage leads={leads} rules={rules} />}
-      {page === 'Inventory' && <InventoryPage vehicles={vehicles} />}
-      {page === 'Reps' && <RepsPage leads={leads} />}
-      {page === 'Settings' && <SettingsPage rules={rules} setRules={setRules} />}
+      <NavBar page={page} setPage={setPage} isManager={isManager} />
+      {page === 'Leads' && <LeadsPage leads={leads} rules={rules} isManager={isManager} currentRep={currentRep} />}
+      {page === 'Inventory' && <InventoryPage vehicles={vehicles} isManager={isManager} />}
+      {page === 'Reps' && isManager && <RepsPage leads={leads} />}
+      {page === 'Settings' && isManager && <SettingsPage rules={rules} setRules={setRules} />}
     </div>
   );
 }
