@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot } from 'firebase/firestore';
+import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth';
 
 const firebaseConfig = {
@@ -123,6 +123,67 @@ function LoginPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+// ─── Notepad ───────────────────────────────────────────────
+function Notepad({ userId }) {
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState('');
+  const [saved, setSaved] = useState(true);
+
+  useEffect(() => {
+    const unsub = onSnapshot(doc(db, 'notepads', userId), d => {
+      if (d.exists()) setText(d.data().text || '');
+    });
+    return () => unsub();
+  }, [userId]);
+
+  useEffect(() => {
+    if (!open) return;
+    setSaved(false);
+    const timeout = setTimeout(async () => {
+      await setDoc(doc(db, 'notepads', userId), { text }, { merge: true });
+      setSaved(true);
+    }, 1000);
+    return () => clearTimeout(timeout);
+  }, [text, userId, open]);
+
+  return (
+    <>
+      <button onClick={() => setOpen(!open)} style={{
+        position: 'fixed', bottom: '24px', right: '24px', width: '52px', height: '52px',
+        background: BRAND, color: 'white', border: 'none', borderRadius: '50%',
+        fontSize: '22px', cursor: 'pointer', boxShadow: '0 4px 16px rgba(0,0,0,0.25)',
+        zIndex: 150, display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}>📝</button>
+
+      {open && (
+        <div style={{
+          position: 'fixed', bottom: '88px', right: '24px', width: '300px',
+          background: 'white', border: '2px solid #111', borderRadius: '12px',
+          boxShadow: '0 8px 32px rgba(0,0,0,0.15)', zIndex: 150, overflow: 'hidden',
+        }}>
+          <div style={{ background: BRAND, padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ color: 'white', fontWeight: '700', fontSize: '13px' }}>📝 My Notes</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '11px', color: saved ? '#88cc88' : '#aaa' }}>{saved ? '✓ Saved' : 'Saving...'}</span>
+              <button onClick={() => setOpen(false)} style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', fontSize: '16px' }}>✕</button>
+            </div>
+          </div>
+          <textarea
+            value={text}
+            onChange={e => setText(e.target.value)}
+            placeholder="Daily goals, reminders, follow-up ideas..."
+            style={{
+              width: '100%', height: '280px', padding: '14px', border: 'none',
+              fontSize: '14px', fontFamily: 'sans-serif', resize: 'none',
+              boxSizing: 'border-box', outline: 'none', lineHeight: '1.6',
+            }}
+          />
+        </div>
+      )}
+    </>
   );
 }
 
@@ -386,7 +447,6 @@ function LeadsPage({ leads, rules, isManager, currentRep, addNotification }) {
         <button onClick={() => setShowForm(!showForm)} style={btnPrimary}>{showForm ? 'Cancel' : '+ Add Lead'}</button>
       </div>
 
-      {/* Pipeline summary — 3 cols on mobile */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginBottom: '20px' }}>
         {STAGES.map(stage => {
           const count = visibleLeads.filter(l => l.stage === stage).length;
@@ -757,7 +817,6 @@ function App() {
 
   return (
     <div style={{ fontFamily: 'sans-serif', maxWidth: '980px', margin: '0 auto', padding: '16px' }}>
-      {/* Mobile-friendly header */}
       <div style={{ marginBottom: '16px', paddingBottom: '14px', borderBottom: '2px solid #111' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -782,6 +841,8 @@ function App() {
       {page === 'Inventory' && <InventoryPage vehicles={vehicles} isManager={isManager} />}
       {page === 'Reps' && isManager && <RepsPage leads={leads} />}
       {page === 'Settings' && isManager && <SettingsPage rules={rules} setRules={setRules} />}
+
+      <Notepad userId={user.uid} />
     </div>
   );
 }
