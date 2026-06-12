@@ -43,6 +43,27 @@ const initialRules = [
 ];
 const rrCounters = {};
 
+const QUOTES = [
+  { text: "You don't close a sale, you open a relationship.", author: "Patricia Fripp" },
+  { text: "The difference between a successful person and others is not a lack of strength, not a lack of knowledge, but rather a lack of will.", author: "Vince Lombardi" },
+  { text: "Every sale has five basic obstacles: no need, no money, no hurry, no desire, no trust.", author: "Zig Ziglar" },
+  { text: "You are your greatest asset. Put your time, effort and money into training.", author: "Tom Hopkins" },
+  { text: "The best salespeople know that their expertise can become their enemy in selling.", author: "Mike Bosworth" },
+  { text: "Make a customer, not a sale.", author: "Katherine Barchetti" },
+  { text: "Success is the sum of small efforts repeated day in and day out.", author: "Robert Collier" },
+  { text: "I never lose. I either win or I learn.", author: "Nelson Mandela" },
+  { text: "Be obsessed or be average.", author: "Grant Cardone" },
+  { text: "Your number one customers are your people. Look after employees first and then customers last.", author: "Ian Wheatcroft" },
+  { text: "The most unprofitable item ever manufactured is an excuse.", author: "John Mason" },
+  { text: "You miss 100% of the shots you don't take.", author: "Wayne Gretzky" },
+  { text: "Stop selling. Start helping.", author: "Zig Ziglar" },
+  { text: "If you are not taking care of your customer, your competitor will.", author: "Bob Hooey" },
+  { text: "10X your goals, 10X your actions.", author: "Grant Cardone" },
+  { text: "Obstacles are what you see when you take your eyes off the goal.", author: "Zig Ziglar" },
+  { text: "Your attitude, not your aptitude, will determine your altitude.", author: "Zig Ziglar" },
+  { text: "Sales are contingent upon the attitude of the salesman, not the attitude of the prospect.", author: "W. Clement Stone" },
+];
+
 function assignRep(price, rules) {
   const rule = rules.find(r => price >= r.minPrice && price <= r.maxPrice);
   if (!rule || rule.reps.length === 0) return 'Unassigned';
@@ -84,6 +105,48 @@ const inputStyle = {
   width: '100%', padding: '8px 10px', borderRadius: '7px',
   border: '1px solid #ddd', fontSize: '16px', boxSizing: 'border-box',
 };
+
+// ─── Quote Ticker ──────────────────────────────────────────
+function QuoteTicker() {
+  const [index, setIndex] = useState(0);
+  const [visible, setVisible] = useState(true);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setVisible(false);
+      setTimeout(() => {
+        setIndex(i => (i + 1) % QUOTES.length);
+        setVisible(true);
+      }, 500);
+    }, 7000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const quote = QUOTES[index];
+
+  return (
+    <div style={{
+      background: '#111', padding: '8px 16px',
+      display: 'flex', alignItems: 'center', gap: '10px',
+      overflow: 'hidden',
+    }}>
+      <div style={{ fontSize: '14px', flexShrink: 0 }}>⚡</div>
+      <div style={{
+        opacity: visible ? 1 : 0,
+        transition: 'opacity 0.5s ease',
+        display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap',
+        minWidth: 0,
+      }}>
+        <span style={{ fontSize: '12px', color: '#eee', fontStyle: 'italic', fontWeight: '500' }}>
+          "{quote.text}"
+        </span>
+        <span style={{ fontSize: '11px', color: '#888', whiteSpace: 'nowrap' }}>
+          — {quote.author}
+        </span>
+      </div>
+    </div>
+  );
+}
 
 // ─── Login ─────────────────────────────────────────────────
 function LoginPage() {
@@ -226,9 +289,7 @@ function TouchpointTracker({ lead }) {
   const touchpoints = lead.touchpoints || { calls: 0, texts: 0, emails: 0, walkaround: false };
 
   async function updateTouchpoint(field, value) {
-    await updateDoc(doc(db, 'leads', lead.id), {
-      [`touchpoints.${field}`]: value,
-    });
+    await updateDoc(doc(db, 'leads', lead.id), { [`touchpoints.${field}`]: value });
   }
 
   function CounterBox({ label, emoji, field, value }) {
@@ -253,27 +314,18 @@ function TouchpointTracker({ lead }) {
         <CounterBox label="Texts" emoji="💬" field="texts" value={touchpoints.texts || 0} />
         <CounterBox label="Emails" emoji="📧" field="emails" value={touchpoints.emails || 0} />
       </div>
-      {/* Walkaround video toggle */}
-      <div
-        onClick={() => updateTouchpoint('walkaround', !touchpoints.walkaround)}
-        style={{
-          display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 14px',
-          background: touchpoints.walkaround ? '#111' : '#fafafa',
-          border: `1px solid ${touchpoints.walkaround ? '#111' : '#e0e0e0'}`,
-          borderRadius: '10px', cursor: 'pointer', transition: 'all .15s',
-        }}>
+      <div onClick={() => updateTouchpoint('walkaround', !touchpoints.walkaround)} style={{
+        display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 14px',
+        background: touchpoints.walkaround ? '#111' : '#fafafa',
+        border: `1px solid ${touchpoints.walkaround ? '#111' : '#e0e0e0'}`,
+        borderRadius: '10px', cursor: 'pointer', transition: 'all .15s',
+      }}>
         <div style={{ fontSize: '22px' }}>🎥</div>
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: '13px', fontWeight: '700', color: touchpoints.walkaround ? 'white' : '#111' }}>Walkaround Video Sent</div>
-          <div style={{ fontSize: '11px', color: touchpoints.walkaround ? '#aaa' : '#999', marginTop: '1px' }}>
-            {touchpoints.walkaround ? 'Sent ✓' : 'Tap to mark as sent'}
-          </div>
+          <div style={{ fontSize: '11px', color: touchpoints.walkaround ? '#aaa' : '#999', marginTop: '1px' }}>{touchpoints.walkaround ? 'Sent ✓' : 'Tap to mark as sent'}</div>
         </div>
-        <div style={{
-          width: '22px', height: '22px', borderRadius: '50%', border: `2px solid ${touchpoints.walkaround ? 'white' : '#ddd'}`,
-          background: touchpoints.walkaround ? 'white' : 'transparent',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}>
+        <div style={{ width: '22px', height: '22px', borderRadius: '50%', border: `2px solid ${touchpoints.walkaround ? 'white' : '#ddd'}`, background: touchpoints.walkaround ? 'white' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           {touchpoints.walkaround && <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#111' }} />}
         </div>
       </div>
@@ -299,50 +351,39 @@ function StageDrawer({ stage, leads, onClose, isManager, onSelectLead }) {
               <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: stageColors[stage] }} />
               <div style={{ fontSize: '16px', fontWeight: '800' }}>{stage}</div>
             </div>
-            <div style={{ fontSize: '12px', color: '#888', marginTop: '2px' }}>
-              {stageLeads.length} lead{stageLeads.length !== 1 ? 's' : ''} · ${(totalValue / 1000).toFixed(0)}k total
-            </div>
+            <div style={{ fontSize: '12px', color: '#888', marginTop: '2px' }}>{stageLeads.length} lead{stageLeads.length !== 1 ? 's' : ''} · ${(totalValue / 1000).toFixed(0)}k total</div>
           </div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: '22px', cursor: 'pointer', color: '#999' }}>✕</button>
         </div>
         <div style={{ overflowY: 'auto', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
           {stageLeads.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '40px', color: '#999', fontSize: '14px' }}>No leads in this stage</div>
-          ) : (
-            stageLeads.map(lead => {
-              const tp = lead.touchpoints || {};
-              const totalTouches = (tp.calls || 0) + (tp.texts || 0) + (tp.emails || 0);
-              return (
-                <div key={lead.id} onClick={() => { onSelectLead(lead); onClose(); }} style={{
-                  background: '#fafafa', border: '1px solid #e0e0e0', borderRadius: '10px',
-                  padding: '12px 14px', cursor: 'pointer', borderLeft: `4px solid ${stageColors[stage]}`,
-                }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                    <div>
-                      <div style={{ fontWeight: '700', fontSize: '15px' }}>{lead.name}</div>
-                      <div style={{ fontSize: '13px', color: '#666', marginTop: '2px' }}>{lead.vehicle}</div>
-                      {lead.phone && <div style={{ fontSize: '12px', color: '#999', marginTop: '2px' }}>{lead.phone}</div>}
-                    </div>
-                    <div style={{ textAlign: 'right' }}>
-                      <div style={{ fontSize: '14px', fontWeight: '700' }}>${lead.price?.toLocaleString()}</div>
-                      <div style={{ padding: '2px 8px', borderRadius: '20px', fontSize: '11px', fontWeight: '700', background: statusColors[lead.status] + '22', color: statusColors[lead.status], marginTop: '4px', display: 'inline-block' }}>{lead.status}</div>
-                    </div>
+          ) : stageLeads.map(lead => {
+            const tp = lead.touchpoints || {};
+            const totalTouches = (tp.calls || 0) + (tp.texts || 0) + (tp.emails || 0);
+            return (
+              <div key={lead.id} onClick={() => { onSelectLead(lead); onClose(); }} style={{ background: '#fafafa', border: '1px solid #e0e0e0', borderRadius: '10px', padding: '12px 14px', cursor: 'pointer', borderLeft: `4px solid ${stageColors[stage]}` }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <div>
+                    <div style={{ fontWeight: '700', fontSize: '15px' }}>{lead.name}</div>
+                    <div style={{ fontSize: '13px', color: '#666', marginTop: '2px' }}>{lead.vehicle}</div>
+                    {lead.phone && <div style={{ fontSize: '12px', color: '#999', marginTop: '2px' }}>{lead.phone}</div>}
                   </div>
-                  <div style={{ display: 'flex', gap: '10px', marginTop: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
-                    {isManager && <span style={{ fontSize: '12px', fontWeight: '600', color: '#555' }}>👤 {lead.rep}</span>}
-                    <span style={{ fontSize: '12px', color: '#888' }}>{lead.source}</span>
-                    {lead.followUp && <span style={{ fontSize: '11px', color: BRAND, fontWeight: '600' }}>📅 {new Date(lead.followUp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>}
-                    {totalTouches > 0 && (
-                      <span style={{ fontSize: '11px', color: '#666', background: '#f0f0f0', padding: '2px 8px', borderRadius: '10px' }}>
-                        {tp.calls > 0 ? `📞${tp.calls} ` : ''}{tp.texts > 0 ? `💬${tp.texts} ` : ''}{tp.emails > 0 ? `📧${tp.emails}` : ''}
-                      </span>
-                    )}
-                    {tp.walkaround && <span style={{ fontSize: '11px', color: '#3B6D11', fontWeight: '600' }}>🎥 Sent</span>}
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontSize: '14px', fontWeight: '700' }}>${lead.price?.toLocaleString()}</div>
+                    <div style={{ padding: '2px 8px', borderRadius: '20px', fontSize: '11px', fontWeight: '700', background: statusColors[lead.status] + '22', color: statusColors[lead.status], marginTop: '4px', display: 'inline-block' }}>{lead.status}</div>
                   </div>
                 </div>
-              );
-            })
-          )}
+                <div style={{ display: 'flex', gap: '8px', marginTop: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+                  {isManager && <span style={{ fontSize: '12px', fontWeight: '600', color: '#555' }}>👤 {lead.rep}</span>}
+                  <span style={{ fontSize: '12px', color: '#888' }}>{lead.source}</span>
+                  {lead.followUp && <span style={{ fontSize: '11px', color: BRAND, fontWeight: '600' }}>📅 {new Date(lead.followUp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>}
+                  {totalTouches > 0 && <span style={{ fontSize: '11px', color: '#666', background: '#f0f0f0', padding: '2px 8px', borderRadius: '10px' }}>{tp.calls > 0 ? `📞${tp.calls} ` : ''}{tp.texts > 0 ? `💬${tp.texts} ` : ''}{tp.emails > 0 ? `📧${tp.emails}` : ''}</span>}
+                  {tp.walkaround && <span style={{ fontSize: '11px', color: '#3B6D11', fontWeight: '600' }}>🎥 Sent</span>}
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>
@@ -413,7 +454,6 @@ function LeadDetail({ lead, onClose, currentRep }) {
         <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: '24px', cursor: 'pointer', color: '#999', padding: '0 0 0 12px' }}>✕</button>
       </div>
 
-      {/* Stage */}
       <div style={{ background: BRAND_LIGHT, borderRadius: '10px', padding: '14px', marginBottom: '20px', borderLeft: `4px solid ${BRAND}` }}>
         <div style={{ fontSize: '11px', color: '#888', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Pipeline Stage</div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -423,10 +463,8 @@ function LeadDetail({ lead, onClose, currentRep }) {
         </div>
       </div>
 
-      {/* Outreach Tracker */}
       <TouchpointTracker lead={lead} />
 
-      {/* Contact Info */}
       <div style={{ marginBottom: '20px' }}>
         <div style={{ fontSize: '13px', fontWeight: '700', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Contact Info</div>
         <EditableField label="Phone" field="phone" value={lead.phone} />
@@ -434,7 +472,6 @@ function LeadDetail({ lead, onClose, currentRep }) {
         <EditableField label="Assigned Rep" field="rep" value={lead.rep} />
       </div>
 
-      {/* Deal Info */}
       <div style={{ marginBottom: '20px' }}>
         <div style={{ fontSize: '13px', fontWeight: '700', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Deal Info</div>
         <EditableField label="Vehicle" field="vehicle" value={lead.vehicle} />
@@ -448,7 +485,6 @@ function LeadDetail({ lead, onClose, currentRep }) {
         </div>
       </div>
 
-      {/* Follow-up */}
       <div style={{ marginBottom: '20px' }}>
         <div style={{ fontSize: '13px', fontWeight: '700', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Follow-up Date</div>
         <div style={{ display: 'flex', gap: '8px' }}>
@@ -458,7 +494,6 @@ function LeadDetail({ lead, onClose, currentRep }) {
         {lead.followUp && <div style={{ fontSize: '12px', color: BRAND, marginTop: '6px', fontWeight: '600' }}>📅 {new Date(lead.followUp).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>}
       </div>
 
-      {/* Notes */}
       <div style={{ marginBottom: '20px' }}>
         <div style={{ fontSize: '13px', fontWeight: '700', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Add Note</div>
         <textarea value={note} onChange={e => setNote(e.target.value)} placeholder="Type a note..."
@@ -466,7 +501,6 @@ function LeadDetail({ lead, onClose, currentRep }) {
         <button onClick={saveNote} style={{ ...btnPrimary, marginTop: '8px' }}>Save Note</button>
       </div>
 
-      {/* Activity */}
       {(lead.activity || []).length > 0 && (
         <div>
           <div style={{ fontSize: '13px', fontWeight: '700', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Activity</div>
@@ -584,9 +618,7 @@ function LeadsPage({ leads, rules, isManager, currentRep, addNotification }) {
               padding: '6px 14px', borderRadius: '20px', border: `1.5px solid ${viewAs === opt ? BRAND : '#ddd'}`,
               background: viewAs === opt ? BRAND : 'white', color: viewAs === opt ? 'white' : '#666',
               cursor: 'pointer', fontSize: '13px', fontWeight: '600',
-            }}>
-              {opt === currentRep ? `${opt} (me)` : opt}
-            </button>
+            }}>{opt === currentRep ? `${opt} (me)` : opt}</button>
           ))}
         </div>
       )}
@@ -596,10 +628,7 @@ function LeadsPage({ leads, rules, isManager, currentRep, addNotification }) {
           const count = visibleLeads.filter(l => l.stage === stage).length;
           const value = visibleLeads.filter(l => l.stage === stage).reduce((s, l) => s + l.price, 0);
           return (
-            <div key={stage} onClick={() => setActiveStage(stage)} style={{
-              background: 'white', border: '1px solid #e0e0e0', borderRadius: '10px',
-              padding: '10px', borderTop: `3px solid ${stageColors[stage]}`, cursor: 'pointer',
-            }}>
+            <div key={stage} onClick={() => setActiveStage(stage)} style={{ background: 'white', border: '1px solid #e0e0e0', borderRadius: '10px', padding: '10px', borderTop: `3px solid ${stageColors[stage]}`, cursor: 'pointer' }}>
               <div style={{ fontSize: '10px', color: '#666', marginBottom: '4px' }}>{stage}</div>
               <div style={{ fontSize: '18px', fontWeight: '700' }}>{count}</div>
               {value > 0 && <div style={{ fontSize: '10px', color: '#888' }}>${(value / 1000).toFixed(0)}k</div>}
@@ -676,11 +705,7 @@ function LeadsPage({ leads, rules, isManager, currentRep, addNotification }) {
                   <span style={{ fontSize: '12px', color: '#888' }}>{lead.source}</span>
                   {viewAs === 'All' && <span style={{ fontSize: '12px', fontWeight: '600' }}>{lead.rep}</span>}
                   {lead.followUp && <span style={{ fontSize: '11px', color: BRAND, fontWeight: '600' }}>📅 {new Date(lead.followUp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>}
-                  {totalTouches > 0 && (
-                    <span style={{ fontSize: '11px', color: '#666', background: '#f0f0f0', padding: '2px 7px', borderRadius: '10px' }}>
-                      {tp.calls > 0 ? `📞${tp.calls} ` : ''}{tp.texts > 0 ? `💬${tp.texts} ` : ''}{tp.emails > 0 ? `📧${tp.emails}` : ''}
-                    </span>
-                  )}
+                  {totalTouches > 0 && <span style={{ fontSize: '11px', color: '#666', background: '#f0f0f0', padding: '2px 7px', borderRadius: '10px' }}>{tp.calls > 0 ? `📞${tp.calls} ` : ''}{tp.texts > 0 ? `💬${tp.texts} ` : ''}{tp.emails > 0 ? `📧${tp.emails}` : ''}</span>}
                   {tp.walkaround && <span style={{ fontSize: '11px', color: '#3B6D11', fontWeight: '600' }}>🎥</span>}
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -700,15 +725,7 @@ function LeadsPage({ leads, rules, isManager, currentRep, addNotification }) {
         )}
       </div>
 
-      {activeStage && (
-        <StageDrawer
-          stage={activeStage}
-          leads={visibleLeads}
-          onClose={() => setActiveStage(null)}
-          isManager={isManager}
-          onSelectLead={lead => setSelectedLead(lead)}
-        />
-      )}
+      {activeStage && <StageDrawer stage={activeStage} leads={visibleLeads} onClose={() => setActiveStage(null)} isManager={isManager} onSelectLead={lead => setSelectedLead(lead)} />}
       {selectedLead && <LeadDetail lead={selectedLead} onClose={() => setSelectedLead(null)} currentRep={currentRep} />}
     </div>
   );
@@ -815,9 +832,7 @@ function InventoryPage({ vehicles, isManager }) {
             </div>
           );
         })}
-        {vehicles.length === 0 && (
-          <div style={{ textAlign: 'center', padding: '40px', color: '#999', background: 'white', borderRadius: '10px', border: '1px solid #e0e0e0' }}>No vehicles yet</div>
-        )}
+        {vehicles.length === 0 && <div style={{ textAlign: 'center', padding: '40px', color: '#999', background: 'white', borderRadius: '10px', border: '1px solid #e0e0e0' }}>No vehicles yet</div>}
       </div>
     </div>
   );
@@ -979,31 +994,38 @@ function App() {
   );
 
   return (
-    <div style={{ fontFamily: 'sans-serif', maxWidth: '980px', margin: '0 auto', padding: '16px' }}>
-      <div style={{ marginBottom: '16px', paddingBottom: '14px', borderBottom: '2px solid #111' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <div style={{ background: BRAND, color: 'white', fontWeight: '800', fontSize: '12px', padding: '6px 10px', borderRadius: '6px', letterSpacing: '1px', flexShrink: 0 }}>CGM</div>
-            <div>
-              <div style={{ fontSize: '15px', fontWeight: '800', letterSpacing: '0.5px' }}>CAR GUYZ MOTORS</div>
-              <div style={{ fontSize: '11px', color: '#888' }}>{isManager ? '👑 Manager' : `👤 ${currentRep}`} · American Fork, UT</div>
+    <div style={{ fontFamily: 'sans-serif', maxWidth: '980px', margin: '0 auto' }}>
+
+      {/* Quote Ticker */}
+      <QuoteTicker />
+
+      <div style={{ padding: '16px' }}>
+        {/* Header */}
+        <div style={{ marginBottom: '16px', paddingBottom: '14px', borderBottom: '2px solid #111' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <div style={{ background: BRAND, color: 'white', fontWeight: '800', fontSize: '12px', padding: '6px 10px', borderRadius: '6px', letterSpacing: '1px', flexShrink: 0 }}>CGM</div>
+              <div>
+                <div style={{ fontSize: '15px', fontWeight: '800', letterSpacing: '0.5px' }}>CAR GUYZ MOTORS</div>
+                <div style={{ fontSize: '11px', color: '#888' }}>{isManager ? '👑 Manager' : `👤 ${currentRep}`} · American Fork, UT</div>
+              </div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+              {!notifPermission && (
+                <button onClick={() => requestNotificationPermission().then(setNotifPermission)} style={{ background: '#ff6b35', color: 'white', border: 'none', borderRadius: '7px', padding: '5px 8px', cursor: 'pointer', fontSize: '11px', fontWeight: '600' }}>🔔 Allow</button>
+              )}
+              <NotificationBell notifications={notifications} onClear={() => setNotifications([])} />
+              <button onClick={() => signOut(auth)} style={{ background: 'none', border: '1px solid #ddd', borderRadius: '7px', padding: '6px 10px', cursor: 'pointer', fontSize: '12px', color: '#666' }}>Out</button>
             </div>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
-            {!notifPermission && (
-              <button onClick={() => requestNotificationPermission().then(setNotifPermission)} style={{ background: '#ff6b35', color: 'white', border: 'none', borderRadius: '7px', padding: '5px 8px', cursor: 'pointer', fontSize: '11px', fontWeight: '600' }}>🔔 Allow</button>
-            )}
-            <NotificationBell notifications={notifications} onClear={() => setNotifications([])} />
-            <button onClick={() => signOut(auth)} style={{ background: 'none', border: '1px solid #ddd', borderRadius: '7px', padding: '6px 10px', cursor: 'pointer', fontSize: '12px', color: '#666' }}>Out</button>
-          </div>
         </div>
-      </div>
 
-      <NavBar page={page} setPage={setPage} isManager={isManager} />
-      {page === 'Leads' && <LeadsPage leads={leads} rules={rules} isManager={isManager} currentRep={currentRep} addNotification={addNotification} />}
-      {page === 'Inventory' && <InventoryPage vehicles={vehicles} isManager={isManager} />}
-      {page === 'Reps' && isManager && <RepsPage leads={leads} />}
-      {page === 'Settings' && isManager && <SettingsPage rules={rules} setRules={setRules} />}
+        <NavBar page={page} setPage={setPage} isManager={isManager} />
+        {page === 'Leads' && <LeadsPage leads={leads} rules={rules} isManager={isManager} currentRep={currentRep} addNotification={addNotification} />}
+        {page === 'Inventory' && <InventoryPage vehicles={vehicles} isManager={isManager} />}
+        {page === 'Reps' && isManager && <RepsPage leads={leads} />}
+        {page === 'Settings' && isManager && <SettingsPage rules={rules} setRules={setRules} />}
+      </div>
 
       <Notepad userId={user.uid} />
     </div>
