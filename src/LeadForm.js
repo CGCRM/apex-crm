@@ -13,26 +13,15 @@ const firebaseConfig = {
 
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
 const db = getFirestore(app);
-
 const BRAND = '#111111';
 
 const inputStyle = {
   width: '100%', padding: '12px 14px', borderRadius: '8px',
   border: '1.5px solid #e0e0e0', fontSize: '16px',
-  boxSizing: 'border-box', fontFamily: 'sans-serif',
-  outline: 'none',
+  boxSizing: 'border-box', fontFamily: 'sans-serif', outline: 'none',
 };
-
-const labelStyle = {
-  fontSize: '13px', fontWeight: '600', color: '#444',
-  display: 'block', marginBottom: '6px',
-};
-
-const sectionStyle = {
-  background: 'white', borderRadius: '12px',
-  border: '1px solid #e0e0e0', padding: '20px',
-  marginBottom: '16px',
-};
+const labelStyle = { fontSize: '13px', fontWeight: '600', color: '#444', display: 'block', marginBottom: '6px' };
+const sectionStyle = { background: 'white', borderRadius: '12px', border: '1px solid #e0e0e0', padding: '20px', marginBottom: '16px' };
 
 export default function LeadForm() {
   const [step, setStep] = useState(1);
@@ -165,13 +154,18 @@ export default function LeadForm() {
               <div style={{ marginBottom: '12px' }}>
                 <label style={labelStyle}>Condition Preference</label>
                 <select style={inputStyle} name="condition" value={form.condition} onChange={handleChange}>
-                  <option>New</option><option>Pre-Owned / CPO</option><option>Either</option>
+                  <option>New</option>
+                  <option>Pre-Owned / CPO</option>
+                  <option>Either</option>
                 </select>
               </div>
               <div>
                 <label style={labelStyle}>When are you looking to purchase?</label>
                 <select style={inputStyle} name="timeframe" value={form.timeframe} onChange={handleChange}>
-                  <option>ASAP</option><option>Within 30 days</option><option>Within 90 days</option><option>Just browsing</option>
+                  <option>ASAP</option>
+                  <option>Within 30 days</option>
+                  <option>Within 90 days</option>
+                  <option>Just browsing</option>
                 </select>
               </div>
             </div>
@@ -187,20 +181,37 @@ export default function LeadForm() {
                 <label style={labelStyle}>Do you have a vehicle to trade in?</label>
                 <div style={{ display: 'flex', gap: '10px' }}>
                   {['Yes', 'No'].map(opt => (
-                    <button key={opt} onClick={() => setForm({ ...form, hasTrade: opt })} style={{ flex: 1, padding: '12px', borderRadius: '8px', cursor: 'pointer', fontSize: '14px', fontWeight: '600', background: form.hasTrade === opt ? BRAND : 'white', color: form.hasTrade === opt ? 'white' : '#666', border: `2px solid ${form.hasTrade === opt ? BRAND : '#e0e0e0'}` }}>{opt}</button>
+                    <button key={opt} onClick={() => setForm({ ...form, hasTrade: opt })} style={{ flex: 1, padding: '12px', borderRadius: '8px', cursor: 'pointer', fontSize: '14px', fontWeight: '600', background: form.hasTrade === opt ? BRAND : 'white', color: form.hasTrade === opt ? 'white' : '#666', border: `2px solid ${form.hasTrade === opt ? BRAND : '#e0e0e0'}` }}>
+                      {opt}
+                    </button>
                   ))}
                 </div>
               </div>
               {form.hasTrade === 'Yes' && (
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                  <div><label style={labelStyle}>Year</label><input style={inputStyle} name="tradeYear" value={form.tradeYear} onChange={handleChange} placeholder="2021" /></div>
-                  <div><label style={labelStyle}>Make</label><input style={inputStyle} name="tradeMake" value={form.tradeMake} onChange={handleChange} placeholder="Porsche" /></div>
-                  <div><label style={labelStyle}>Model</label><input style={inputStyle} name="tradeModel" value={form.tradeModel} onChange={handleChange} placeholder="911" /></div>
-                  <div><label style={labelStyle}>Miles</label><input style={inputStyle} name="tradeMiles" value={form.tradeMiles} onChange={handleChange} placeholder="24,000" /></div>
+                  <div>
+                    <label style={labelStyle}>Year</label>
+                    <input style={inputStyle} name="tradeYear" value={form.tradeYear} onChange={handleChange} placeholder="2021" />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Make</label>
+                    <input style={inputStyle} name="tradeMake" value={form.tradeMake} onChange={handleChange} placeholder="Porsche" />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Model</label>
+                    <input style={inputStyle} name="tradeModel" value={form.tradeModel} onChange={handleChange} placeholder="911" />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Miles</label>
+                    <input style={inputStyle} name="tradeMiles" value={form.tradeMiles} onChange={handleChange} placeholder="24,000" />
+                  </div>
                   <div style={{ gridColumn: '1 / -1' }}>
                     <label style={labelStyle}>Condition</label>
                     <select style={inputStyle} name="tradeCondition" value={form.tradeCondition} onChange={handleChange}>
-                      <option>Excellent</option><option>Good</option><option>Fair</option><option>Needs Work</option>
+                      <option>Excellent</option>
+                      <option>Good</option>
+                      <option>Fair</option>
+                      <option>Needs Work</option>
                     </select>
                   </div>
                 </div>
@@ -218,7 +229,9 @@ export default function LeadForm() {
                 <label style={labelStyle}>Will you need financing?</label>
                 <div style={{ display: 'flex', gap: '10px' }}>
                   {['Yes', 'No', 'Undecided'].map(opt => (
-                    <button key={opt} onClick={() => setForm({ ...form, needsFinancing: opt })} style={{ flex: 1, padding: '10px', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', background: form.needsFinancing === opt ? BRAND : 'white', color: form.needsFinancing === opt ? 'white' : '#666', border: `2px solid ${form.needsFinancing === opt ? BRAND : '#e0e0e0'}` }}>{opt}</button>
+                    <button key={opt} onClick={() => setForm({ ...form, needsFinancing: opt })} style={{ flex: 1, padding: '10px', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', background: form.needsFinancing === opt ? BRAND : 'white', color: form.needsFinancing === opt ? 'white' : '#666', border: `2px solid ${form.needsFinancing === opt ? BRAND : '#e0e0e0'}` }}>
+                      {opt}
+                    </button>
                   ))}
                 </div>
               </div>
@@ -226,13 +239,22 @@ export default function LeadForm() {
                 <div style={{ marginBottom: '16px' }}>
                   <label style={labelStyle}>Employment Status</label>
                   <select style={inputStyle} name="employmentStatus" value={form.employmentStatus} onChange={handleChange}>
-                    <option>Employed</option><option>Self-Employed</option><option>Retired</option><option>Other</option>
+                    <option>Employed</option>
+                    <option>Self-Employed</option>
+                    <option>Retired</option>
+                    <option>Other</option>
                   </select>
                 </div>
               )}
               <div>
                 <label style={labelStyle}>Anything else you'd like us to know?</label>
-                <textarea name="notes" value={form.notes} onChange={handleChange} placeholder="Any specific features, colors, or questions..." style={{ ...inputStyle, height: '100px', resize: 'vertical' }} />
+                <textarea
+                  name="notes"
+                  value={form.notes}
+                  onChange={handleChange}
+                  placeholder="Any specific features, colors, or questions..."
+                  style={{ ...inputStyle, height: '100px', resize: 'vertical' }}
+                />
               </div>
             </div>
           </div>
@@ -240,8 +262,25 @@ export default function LeadForm() {
 
         <div style={{ display: 'flex', gap: '10px', marginTop: '8px' }}>
           {step > 1 && (
-            <button onClick={prevStep} style={{ flex: 1, padding: '14px', borderRadius: '10px', border: '2px solid #e0e0e0', background: 'white', cursor: 'pointer', fontSize: '15px', fontWeight: '600', color: '#666' }}>← Back</button>
+            <button onClick={prevStep} style={{ flex: 1, padding: '14px', borderRadius: '10px', border: '2px solid #e0e0e0', background: 'white', cursor: 'pointer', fontSize: '15px', fontWeight: '600', color: '#666' }}>
+              ← Back
+            </button>
           )}
           {step < totalSteps ? (
-            <button onClick={nextStep} style={{ flex: 2, padding: '14px', borderRadius: '10px', border: 'none', background: BRAND, color: 'white', cursor: 'pointer', fontSize: '15px', fontWeight: '700' }}>Continue →</button>
+            <button onClick={nextStep} style={{ flex: 2, padding: '14px', borderRadius: '10px', border: 'none', background: BRAND, color: 'white', cursor: 'pointer', fontSize: '15px', fontWeight: '700' }}>
+              Continue →
+            </button>
           ) : (
+            <button onClick={handleSubmit} disabled={loading} style={{ flex: 2, padding: '14px', borderRadius: '10px', border: 'none', background: '#3B6D11', color: 'white', cursor: 'pointer', fontSize: '15px', fontWeight: '700' }}>
+              {loading ? 'Submitting...' : '🚗 Submit My Request'}
+            </button>
+          )}
+        </div>
+
+        <div style={{ textAlign: 'center', marginTop: '16px', fontSize: '12px', color: '#aaa' }}>
+          Your information is kept private and will only be used to contact you about your vehicle inquiry.
+        </div>
+      </div>
+    </div>
+  );
+}
