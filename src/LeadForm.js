@@ -1,0 +1,1031 @@
+import React, { useState, useEffect, useCallback } from 'react';
+import { initializeApp } from 'firebase/app';
+import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, setDoc } from 'firebase/firestore';
+import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth';
+import LeadForm from './LeadForm';
+
+const firebaseConfig = {
+  apiKey: "AIzaSyA4JkTKNdjMx5KlZGBRdGJGnQvSz9HMED0",
+  authDomain: "apex-crm-935a9.firebaseapp.com",
+  projectId: "apex-crm-935a9",
+  storageBucket: "apex-crm-935a9.firebasestorage.app",
+  messagingSenderId: "472835790880",
+  appId: "1:472835790880:web:2c14e88b0e669e6c074445"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+const auth = getAuth(app);
+
+const MANAGER_UIDS = ['DD4YST73YdU7JUXgxS5yZEMYmlg2'];
+const EMAIL_TO_REP = {
+  'tfrost@carguyzmotors.com': 'Taylor',
+  'twiggins@carguyzmotors.com': 'Ty',
+};
+
+const BRAND = '#111111';
+const BRAND_LIGHT = '#f2f2f2';
+const STAGES = ['New Lead', 'Contact Made', 'Test Drive', 'Negotiation', 'F&I', 'Delivered'];
+const stageColors = {
+  'New Lead': '#4a90e2', 'Contact Made': '#111111', 'Test Drive': '#0F6E56',
+  'Negotiation': '#BA7517', 'F&I': '#993C1D', 'Delivered': '#3B6D11',
+};
+const statusColors = { Hot: '#ff6b35', Warm: '#f5a623', New: '#4a90e2', Cold: '#aaaaaa' };
+const inventoryStatusColors = { Available: '#3B6D11', Pending: '#BA7517', Sold: '#999' };
+const REPS = ['Ty', 'Taylor'];
+const ALL_REPS = [...REPS, 'Unassigned'];
+const sources = ['AutoTrader', 'Cars.com', 'Website', 'Walk-in', 'Referral', 'CarGurus', 'Lead Form'];
+const statuses = ['New', 'Hot', 'Warm', 'Cold'];
+const emptyForm = { name: '', vehicle: '', price: '', status: 'New', rep: 'Unassigned', source: 'Website', phone: '', email: '' };
+const emptyVehicle = { stockNum: '', vin: '', year: '', make: '', model: '', color: '', miles: '', listPrice: '', buyPrice: '', inventoryStatus: 'Available' };
+const initialRules = [
+  { id: 1, label: 'Exotics', minPrice: 250000, maxPrice: 999999999, reps: ['Ty', 'Taylor'], mode: 'round-robin' },
+  { id: 2, label: 'Luxury', minPrice: 0, maxPrice: 249999, reps: ['Ty', 'Taylor'], mode: 'round-robin' },
+];
+const rrCounters = {};
+
+const QUOTES = [
+  { text: "You don't close a sale, you open a relationship.", author: "Patricia Fripp" },
+  { text: "Every sale has five basic obstacles: no need, no money, no hurry, no desire, no trust.", author: "Zig Ziglar" },
+  { text: "You are your greatest asset. Put your time, effort and money into training.", author: "Tom Hopkins" },
+  { text: "Make a customer, not a sale.", author: "Katherine Barchetti" },
+  { text: "Success is the sum of small efforts repeated day in and day out.", author: "Robert Collier" },
+  { text: "I never lose. I either win or I learn.", author: "Nelson Mandela" },
+  { text: "Be obsessed or be average.", author: "Grant Cardone" },
+  { text: "The most unprofitable item ever manufactured is an excuse.", author: "John Mason" },
+  { text: "You miss 100% of the shots you don't take.", author: "Wayne Gretzky" },
+  { text: "Stop selling. Start helping.", author: "Zig Ziglar" },
+  { text: "If you are not taking care of your customer, your competitor will.", author: "Bob Hooey" },
+  { text: "10X your goals, 10X your actions.", author: "Grant Cardone" },
+  { text: "Your attitude, not your aptitude, will determine your altitude.", author: "Zig Ziglar" },
+  { text: "Sales are contingent upon the attitude of the salesman, not the attitude of the prospect.", author: "W. Clement Stone" },
+];
+
+function assignRep(price, rules) {
+  const rule = rules.find(r => price >= r.minPrice && price <= r.maxPrice);
+  if (!rule || rule.reps.length === 0) return 'Unassigned';
+  if (!rrCounters[rule.id]) rrCounters[rule.id] = 0;
+  const rep = rule.reps[rrCounters[rule.id] % rule.reps.length];
+  rrCounters[rule.id]++;
+  return rep;
+}
+
+function formatDate(ts) {
+  if (!ts) return '';
+  return new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+function daysSince(ts) {
+  if (!ts) return 0;
+  return Math.floor((Date.now() - ts) / (1000 * 60 * 60 * 24));
+}
+
+function sendNotification(title, body) {
+  if (Notification.permission === 'granted') new Notification(title, { body, icon: '/favicon.ico' });
+}
+
+async function requestNotificationPermission() {
+  if (!('Notification' in window)) return false;
+  if (Notification.permission === 'granted') return true;
+  if (Notification.permission !== 'denied') {
+    const permission = await Notification.requestPermission();
+    return permission === 'granted';
+  }
+  return false;
+}
+
+const btnPrimary = {
+  background: BRAND, color: 'white', border: 'none', borderRadius: '8px',
+  padding: '8px 16px', cursor: 'pointer', fontSize: '14px', fontWeight: '600',
+};
+const inputStyle = {
+  width: '100%', padding: '8px 10px', borderRadius: '7px',
+  border: '1px solid #ddd', fontSize: '16px', boxSizing: 'border-box',
+};
+
+// ─── Quote Ticker ──────────────────────────────────────────
+function QuoteTicker() {
+  const [index, setIndex] = useState(0);
+  const [visible, setVisible] = useState(true);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setVisible(false);
+      setTimeout(() => { setIndex(i => (i + 1) % QUOTES.length); setVisible(true); }, 500);
+    }, 7000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const quote = QUOTES[index];
+  return (
+    <div style={{ background: '#111', padding: '8px 16px', display: 'flex', alignItems: 'center', gap: '10px', overflow: 'hidden' }}>
+      <div style={{ fontSize: '14px', flexShrink: 0 }}>⚡</div>
+      <div style={{ opacity: visible ? 1 : 0, transition: 'opacity 0.5s ease', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', minWidth: 0 }}>
+        <span style={{ fontSize: '12px', color: '#eee', fontStyle: 'italic', fontWeight: '500' }}>"{quote.text}"</span>
+        <span style={{ fontSize: '11px', color: '#888', whiteSpace: 'nowrap' }}>— {quote.author}</span>
+      </div>
+    </div>
+  );
+}
+
+// ─── Login ─────────────────────────────────────────────────
+function LoginPage() {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  async function handleLogin() {
+    if (!email || !password) { setError('Please enter your email and password.'); return; }
+    setLoading(true); setError('');
+    try { await signInWithEmailAndPassword(auth, email, password); }
+    catch (e) { setError('Invalid email or password.'); setLoading(false); }
+  }
+
+  return (
+    <div style={{ minHeight: '100vh', background: BRAND, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'sans-serif', padding: '20px' }}>
+      <div style={{ width: '100%', maxWidth: '380px' }}>
+        <div style={{ textAlign: 'center', marginBottom: '32px' }}>
+          <div style={{ display: 'inline-block', background: 'white', color: BRAND, fontWeight: '800', fontSize: '18px', padding: '10px 20px', borderRadius: '8px', letterSpacing: '2px', marginBottom: '12px' }}>CGM</div>
+          <div style={{ color: 'white', fontSize: '20px', fontWeight: '800', letterSpacing: '1px' }}>CAR GUYZ MOTORS</div>
+          <div style={{ color: '#888', fontSize: '13px', marginTop: '4px' }}>Internal CRM · Sign in</div>
+        </div>
+        <div style={{ background: 'white', borderRadius: '12px', padding: '28px' }}>
+          <div style={{ marginBottom: '16px' }}>
+            <label style={{ fontSize: '12px', fontWeight: '600', color: '#666', display: 'block', marginBottom: '6px' }}>EMAIL</label>
+            <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@carguyzmotors.com" onKeyDown={e => e.key === 'Enter' && handleLogin()} style={inputStyle} />
+          </div>
+          <div style={{ marginBottom: '20px' }}>
+            <label style={{ fontSize: '12px', fontWeight: '600', color: '#666', display: 'block', marginBottom: '6px' }}>PASSWORD</label>
+            <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" onKeyDown={e => e.key === 'Enter' && handleLogin()} style={inputStyle} />
+          </div>
+          {error && <div style={{ color: '#993C1D', fontSize: '13px', marginBottom: '14px', fontWeight: '500' }}>{error}</div>}
+          <button onClick={handleLogin} disabled={loading} style={{ ...btnPrimary, width: '100%', padding: '12px', fontSize: '15px' }}>
+            {loading ? 'Signing in...' : 'Sign In'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Notepad ───────────────────────────────────────────────
+function Notepad({ userId }) {
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState('');
+  const [saved, setSaved] = useState(true);
+
+  useEffect(() => {
+    const unsub = onSnapshot(doc(db, 'notepads', userId), d => {
+      if (d.exists()) setText(d.data().text || '');
+    });
+    return () => unsub();
+  }, [userId]);
+
+  useEffect(() => {
+    if (!open) return;
+    setSaved(false);
+    const timeout = setTimeout(async () => {
+      await setDoc(doc(db, 'notepads', userId), { text }, { merge: true });
+      setSaved(true);
+    }, 1000);
+    return () => clearTimeout(timeout);
+  }, [text, userId, open]);
+
+  return (
+    <>
+      <button onClick={() => setOpen(!open)} style={{ position: 'fixed', bottom: '24px', right: '24px', width: '52px', height: '52px', background: BRAND, color: 'white', border: 'none', borderRadius: '50%', fontSize: '22px', cursor: 'pointer', boxShadow: '0 4px 16px rgba(0,0,0,0.25)', zIndex: 150, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>📝</button>
+      {open && (
+        <div style={{ position: 'fixed', bottom: '88px', right: '24px', width: '300px', background: 'white', border: '2px solid #111', borderRadius: '12px', boxShadow: '0 8px 32px rgba(0,0,0,0.15)', zIndex: 150, overflow: 'hidden' }}>
+          <div style={{ background: BRAND, padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ color: 'white', fontWeight: '700', fontSize: '13px' }}>📝 My Notes</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '11px', color: saved ? '#88cc88' : '#aaa' }}>{saved ? '✓ Saved' : 'Saving...'}</span>
+              <button onClick={() => setOpen(false)} style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', fontSize: '16px' }}>✕</button>
+            </div>
+          </div>
+          <textarea value={text} onChange={e => setText(e.target.value)} placeholder="Daily goals, reminders, follow-up ideas..." style={{ width: '100%', height: '280px', padding: '14px', border: 'none', fontSize: '14px', fontFamily: 'sans-serif', resize: 'none', boxSizing: 'border-box', outline: 'none', lineHeight: '1.6' }} />
+        </div>
+      )}
+    </>
+  );
+}
+
+// ─── Notification Bell ─────────────────────────────────────
+function NotificationBell({ notifications, onClear }) {
+  const [open, setOpen] = useState(false);
+  const unread = notifications.filter(n => !n.read).length;
+  return (
+    <div style={{ position: 'relative' }}>
+      <button onClick={() => setOpen(!open)} style={{ background: 'none', border: '1px solid #ddd', borderRadius: '8px', padding: '6px 10px', cursor: 'pointer', fontSize: '16px', position: 'relative' }}>
+        🔔
+        {unread > 0 && <span style={{ position: 'absolute', top: '-4px', right: '-4px', background: '#ff6b35', color: 'white', borderRadius: '50%', width: '16px', height: '16px', fontSize: '10px', fontWeight: '700', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{unread}</span>}
+      </button>
+      {open && (
+        <div style={{ position: 'fixed', right: '12px', top: '70px', width: '300px', background: 'white', border: '1px solid #e0e0e0', borderRadius: '12px', boxShadow: '0 4px 20px rgba(0,0,0,0.12)', zIndex: 200, maxHeight: '400px', overflowY: 'auto' }}>
+          <div style={{ padding: '12px 16px', borderBottom: '1px solid #e0e0e0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ fontWeight: '700', fontSize: '14px' }}>Notifications</div>
+            {notifications.length > 0 && <button onClick={onClear} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '12px', color: '#888' }}>Clear all</button>}
+          </div>
+          {notifications.length === 0
+            ? <div style={{ padding: '20px', textAlign: 'center', color: '#999', fontSize: '13px' }}>No notifications</div>
+            : notifications.map((n, i) => (
+              <div key={i} style={{ padding: '12px 16px', borderBottom: '1px solid #f0f0f0', background: n.read ? 'white' : '#f8f8f8' }}>
+                <div style={{ fontSize: '13px', fontWeight: n.read ? '400' : '600' }}>{n.title}</div>
+                <div style={{ fontSize: '12px', color: '#666', marginTop: '2px' }}>{n.body}</div>
+                <div style={{ fontSize: '11px', color: '#bbb', marginTop: '4px' }}>{formatDate(n.ts)}</div>
+              </div>
+            ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Nav Bar ───────────────────────────────────────────────
+function NavBar({ page, setPage, isManager }) {
+  const tabs = isManager ? ['Leads', 'Inventory', 'Reps', 'Settings'] : ['Leads', 'Inventory'];
+  return (
+    <div style={{ display: 'flex', gap: '2px', marginBottom: '20px', borderBottom: '2px solid #111', overflowX: 'auto' }}>
+      {tabs.map(tab => (
+        <button key={tab} onClick={() => setPage(tab)} style={{ background: page === tab ? BRAND : 'none', color: page === tab ? 'white' : '#555', border: 'none', padding: '10px 16px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', borderRadius: '6px 6px 0 0', marginBottom: '-2px', whiteSpace: 'nowrap' }}>{tab}</button>
+      ))}
+    </div>
+  );
+}
+
+// ─── Touchpoint Tracker ────────────────────────────────────
+function TouchpointTracker({ lead }) {
+  const touchpoints = lead.touchpoints || { calls: 0, texts: 0, emails: 0, walkaround: false };
+
+  async function updateTouchpoint(field, value) {
+    await updateDoc(doc(db, 'leads', lead.id), { [`touchpoints.${field}`]: value });
+  }
+
+  function CounterBox({ label, emoji, field, value }) {
+    return (
+      <div style={{ background: '#fafafa', border: '1px solid #e0e0e0', borderRadius: '10px', padding: '10px 12px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' }}>
+        <div style={{ fontSize: '20px' }}>{emoji}</div>
+        <div style={{ fontSize: '11px', color: '#666', fontWeight: '600', textAlign: 'center' }}>{label}</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <button onClick={() => updateTouchpoint(field, Math.max(0, value - 1))} style={{ width: '26px', height: '26px', borderRadius: '50%', border: '1px solid #ddd', background: 'white', cursor: 'pointer', fontSize: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '700' }}>−</button>
+          <div style={{ fontSize: '18px', fontWeight: '800', minWidth: '20px', textAlign: 'center' }}>{value}</div>
+          <button onClick={() => updateTouchpoint(field, value + 1)} style={{ width: '26px', height: '26px', borderRadius: '50%', border: '1px solid #ddd', background: BRAND, color: 'white', cursor: 'pointer', fontSize: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '700' }}>+</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ marginBottom: '20px' }}>
+      <div style={{ fontSize: '13px', fontWeight: '700', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Outreach Tracker</div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginBottom: '8px' }}>
+        <CounterBox label="Calls" emoji="📞" field="calls" value={touchpoints.calls || 0} />
+        <CounterBox label="Texts" emoji="💬" field="texts" value={touchpoints.texts || 0} />
+        <CounterBox label="Emails" emoji="📧" field="emails" value={touchpoints.emails || 0} />
+      </div>
+      <div onClick={() => updateTouchpoint('walkaround', !touchpoints.walkaround)} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 14px', background: touchpoints.walkaround ? '#111' : '#fafafa', border: `1px solid ${touchpoints.walkaround ? '#111' : '#e0e0e0'}`, borderRadius: '10px', cursor: 'pointer', transition: 'all .15s' }}>
+        <div style={{ fontSize: '22px' }}>🎥</div>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: '13px', fontWeight: '700', color: touchpoints.walkaround ? 'white' : '#111' }}>Walkaround Video Sent</div>
+          <div style={{ fontSize: '11px', color: touchpoints.walkaround ? '#aaa' : '#999', marginTop: '1px' }}>{touchpoints.walkaround ? 'Sent ✓' : 'Tap to mark as sent'}</div>
+        </div>
+        <div style={{ width: '22px', height: '22px', borderRadius: '50%', border: `2px solid ${touchpoints.walkaround ? 'white' : '#ddd'}`, background: touchpoints.walkaround ? 'white' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          {touchpoints.walkaround && <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#111' }} />}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Stage Drawer ──────────────────────────────────────────
+function StageDrawer({ stage, leads, onClose, isManager, onSelectLead }) {
+  const stageLeads = leads.filter(l => l.stage === stage);
+  const totalValue = stageLeads.reduce((s, l) => s + (l.price || 0), 0);
+  return (
+    <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 300 }}>
+      <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.5)' }} />
+      <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'white', borderRadius: '16px 16px 0 0', maxHeight: '80vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <div style={{ display: 'flex', justifyContent: 'center', padding: '10px 0 0' }}>
+          <div style={{ width: '40px', height: '4px', background: '#ddd', borderRadius: '2px' }} />
+        </div>
+        <div style={{ padding: '14px 20px', borderBottom: '1px solid #e0e0e0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: stageColors[stage] }} />
+              <div style={{ fontSize: '16px', fontWeight: '800' }}>{stage}</div>
+            </div>
+            <div style={{ fontSize: '12px', color: '#888', marginTop: '2px' }}>{stageLeads.length} lead{stageLeads.length !== 1 ? 's' : ''} · ${(totalValue / 1000).toFixed(0)}k total</div>
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: '22px', cursor: 'pointer', color: '#999' }}>✕</button>
+        </div>
+        <div style={{ overflowY: 'auto', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          {stageLeads.length === 0
+            ? <div style={{ textAlign: 'center', padding: '40px', color: '#999', fontSize: '14px' }}>No leads in this stage</div>
+            : stageLeads.map(lead => {
+              const tp = lead.touchpoints || {};
+              const totalTouches = (tp.calls || 0) + (tp.texts || 0) + (tp.emails || 0);
+              return (
+                <div key={lead.id} onClick={() => { onSelectLead(lead); onClose(); }} style={{ background: '#fafafa', border: '1px solid #e0e0e0', borderRadius: '10px', padding: '12px 14px', cursor: 'pointer', borderLeft: `4px solid ${stageColors[stage]}` }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <div>
+                      <div style={{ fontWeight: '700', fontSize: '15px' }}>{lead.name}</div>
+                      <div style={{ fontSize: '13px', color: '#666', marginTop: '2px' }}>{lead.vehicle}</div>
+                      {lead.phone && <div style={{ fontSize: '12px', color: '#999', marginTop: '2px' }}>{lead.phone}</div>}
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontSize: '14px', fontWeight: '700' }}>${lead.price?.toLocaleString()}</div>
+                      <div style={{ padding: '2px 8px', borderRadius: '20px', fontSize: '11px', fontWeight: '700', background: statusColors[lead.status] + '22', color: statusColors[lead.status], marginTop: '4px', display: 'inline-block' }}>{lead.status}</div>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px', marginTop: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+                    {isManager && <span style={{ fontSize: '12px', fontWeight: '600', color: '#555' }}>👤 {lead.rep}</span>}
+                    <span style={{ fontSize: '12px', color: '#888' }}>{lead.source}</span>
+                    {lead.followUp && <span style={{ fontSize: '11px', color: BRAND, fontWeight: '600' }}>📅 {new Date(lead.followUp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>}
+                    {totalTouches > 0 && <span style={{ fontSize: '11px', color: '#666', background: '#f0f0f0', padding: '2px 8px', borderRadius: '10px' }}>{tp.calls > 0 ? `📞${tp.calls} ` : ''}{tp.texts > 0 ? `💬${tp.texts} ` : ''}{tp.emails > 0 ? `📧${tp.emails}` : ''}</span>}
+                    {tp.walkaround && <span style={{ fontSize: '11px', color: '#3B6D11', fontWeight: '600' }}>🎥 Sent</span>}
+                  </div>
+                </div>
+              );
+            })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Lead Detail Panel ─────────────────────────────────────
+function LeadDetail({ lead, onClose, currentRep }) {
+  const [note, setNote] = useState('');
+  const [followUp, setFollowUp] = useState(lead.followUp || '');
+  const [editField, setEditField] = useState(null);
+  const [editVal, setEditVal] = useState('');
+  const [showFormData, setShowFormData] = useState(false);
+
+  async function saveNote() {
+    if (!note.trim()) return;
+    const activity = [...(lead.activity || []), { text: note, ts: Date.now(), type: 'note', author: currentRep }];
+    await updateDoc(doc(db, 'leads', lead.id), { activity });
+    setNote('');
+  }
+  async function saveFollowUp() { await updateDoc(doc(db, 'leads', lead.id), { followUp }); }
+  async function saveField(field, value) { await updateDoc(doc(db, 'leads', lead.id), { [field]: value }); setEditField(null); }
+
+  async function advanceStage() {
+    const i = STAGES.indexOf(lead.stage);
+    if (i < STAGES.length - 1) {
+      const newStage = STAGES[i + 1];
+      const activity = [...(lead.activity || []), { text: `Stage → "${newStage}"`, ts: Date.now(), type: 'stage', author: currentRep }];
+      await updateDoc(doc(db, 'leads', lead.id), { stage: newStage, activity });
+      sendNotification('🔄 Stage Updated', `${lead.name} moved to ${newStage}`);
+    }
+  }
+  async function regressStage() {
+    const i = STAGES.indexOf(lead.stage);
+    if (i > 0) {
+      const newStage = STAGES[i - 1];
+      const activity = [...(lead.activity || []), { text: `Stage → "${newStage}"`, ts: Date.now(), type: 'stage', author: currentRep }];
+      await updateDoc(doc(db, 'leads', lead.id), { stage: newStage, activity });
+    }
+  }
+
+  function EditableField({ label, field, value }) {
+    return (
+      <div style={{ marginBottom: '12px' }}>
+        <div style={{ fontSize: '11px', color: '#888', marginBottom: '3px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{label}</div>
+        {editField === field ? (
+          <div style={{ display: 'flex', gap: '6px' }}>
+            <input autoFocus style={inputStyle} value={editVal} onChange={e => setEditVal(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') saveField(field, editVal); if (e.key === 'Escape') setEditField(null); }} />
+            <button onClick={() => saveField(field, editVal)} style={{ ...btnPrimary, padding: '0 12px' }}>Save</button>
+          </div>
+        ) : (
+          <div onClick={() => { setEditField(field); setEditVal(value || ''); }} style={{ fontSize: '14px', padding: '7px 10px', borderRadius: '7px', border: '1px solid transparent', cursor: 'pointer', background: '#fafafa' }}>
+            {value || <span style={{ color: '#bbb' }}>Click to add...</span>}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ position: 'fixed', top: 0, right: 0, width: '100%', maxWidth: '420px', height: '100vh', background: 'white', borderLeft: '2px solid #111', overflowY: 'auto', zIndex: 100, padding: '20px', boxShadow: '-4px 0 24px rgba(0,0,0,0.12)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
+        <div>
+          <div style={{ fontSize: '18px', fontWeight: '700' }}>{lead.name}</div>
+          <div style={{ fontSize: '13px', color: '#666', marginTop: '2px' }}>{lead.vehicle}</div>
+          {lead.source === 'Lead Form' && <div style={{ fontSize: '11px', color: '#534AB7', fontWeight: '600', marginTop: '3px' }}>📋 Submitted via Lead Form</div>}
+        </div>
+        <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: '24px', cursor: 'pointer', color: '#999', padding: '0 0 0 12px' }}>✕</button>
+      </div>
+
+      <div style={{ background: BRAND_LIGHT, borderRadius: '10px', padding: '14px', marginBottom: '20px', borderLeft: `4px solid ${BRAND}` }}>
+        <div style={{ fontSize: '11px', color: '#888', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Pipeline Stage</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <button onClick={regressStage} style={{ background: 'white', border: '1px solid #ddd', borderRadius: '6px', padding: '8px 12px', cursor: 'pointer', fontWeight: '600', fontSize: '16px' }}>←</button>
+          <div style={{ flex: 1, textAlign: 'center', padding: '8px', borderRadius: '7px', fontSize: '13px', fontWeight: '700', background: stageColors[lead.stage] + '22', color: stageColors[lead.stage] }}>{lead.stage}</div>
+          <button onClick={advanceStage} style={{ background: 'white', border: '1px solid #ddd', borderRadius: '6px', padding: '8px 12px', cursor: 'pointer', fontWeight: '600', fontSize: '16px' }}>→</button>
+        </div>
+      </div>
+
+      <TouchpointTracker lead={lead} />
+
+      <div style={{ marginBottom: '20px' }}>
+        <div style={{ fontSize: '13px', fontWeight: '700', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Contact Info</div>
+        <EditableField label="Phone" field="phone" value={lead.phone} />
+        <EditableField label="Email" field="email" value={lead.email} />
+        <EditableField label="Assigned Rep" field="rep" value={lead.rep} />
+      </div>
+
+      <div style={{ marginBottom: '20px' }}>
+        <div style={{ fontSize: '13px', fontWeight: '700', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Deal Info</div>
+        <EditableField label="Vehicle" field="vehicle" value={lead.vehicle} />
+        <EditableField label="Price" field="price" value={lead.price?.toString()} />
+        <EditableField label="Lead Source" field="source" value={lead.source} />
+        <div style={{ marginBottom: '12px' }}>
+          <div style={{ fontSize: '11px', color: '#888', marginBottom: '3px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Status</div>
+          <select value={lead.status} onChange={e => saveField('status', e.target.value)} style={{ ...inputStyle, background: '#fafafa' }}>
+            {statuses.map(s => <option key={s}>{s}</option>)}
+          </select>
+        </div>
+      </div>
+
+      {/* Form data section for leads from intake form */}
+      {lead.formData && (
+        <div style={{ marginBottom: '20px' }}>
+          <div onClick={() => setShowFormData(!showFormData)} style={{ fontSize: '13px', fontWeight: '700', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.5px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span>📋 Form Submission</span>
+            <span style={{ fontSize: '16px' }}>{showFormData ? '▲' : '▼'}</span>
+          </div>
+          {showFormData && (
+            <div style={{ background: '#f8f8f8', borderRadius: '10px', padding: '14px', fontSize: '13px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {lead.formData.condition && <div><span style={{ fontWeight: '600', color: '#555' }}>Condition: </span>{lead.formData.condition}</div>}
+              {lead.formData.timeframe && <div><span style={{ fontWeight: '600', color: '#555' }}>Timeframe: </span>{lead.formData.timeframe}</div>}
+              {lead.formData.needsFinancing && <div><span style={{ fontWeight: '600', color: '#555' }}>Financing: </span>{lead.formData.needsFinancing}</div>}
+              {lead.formData.employmentStatus && lead.formData.needsFinancing === 'Yes' && <div><span style={{ fontWeight: '600', color: '#555' }}>Employment: </span>{lead.formData.employmentStatus}</div>}
+              {lead.formData.hasTrade === 'Yes' && (
+                <div style={{ background: 'white', borderRadius: '8px', padding: '10px', border: '1px solid #e0e0e0' }}>
+                  <div style={{ fontWeight: '700', marginBottom: '6px', color: '#333' }}>🔄 Trade-in</div>
+                  <div>{lead.formData.tradeYear} {lead.formData.tradeMake} {lead.formData.tradeModel}</div>
+                  {lead.formData.tradeMiles && <div style={{ color: '#666' }}>{lead.formData.tradeMiles} miles · {lead.formData.tradeCondition}</div>}
+                </div>
+              )}
+              {lead.formData.notes && <div><span style={{ fontWeight: '600', color: '#555' }}>Notes: </span>{lead.formData.notes}</div>}
+            </div>
+          )}
+        </div>
+      )}
+
+      <div style={{ marginBottom: '20px' }}>
+        <div style={{ fontSize: '13px', fontWeight: '700', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Follow-up Date</div>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <input type="datetime-local" value={followUp} onChange={e => setFollowUp(e.target.value)} style={{ ...inputStyle, flex: 1 }} />
+          <button onClick={saveFollowUp} style={{ ...btnPrimary, padding: '0 14px' }}>Set</button>
+        </div>
+        {lead.followUp && <div style={{ fontSize: '12px', color: BRAND, marginTop: '6px', fontWeight: '600' }}>📅 {new Date(lead.followUp).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>}
+      </div>
+
+      <div style={{ marginBottom: '20px' }}>
+        <div style={{ fontSize: '13px', fontWeight: '700', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Add Note</div>
+        <textarea value={note} onChange={e => setNote(e.target.value)} placeholder="Type a note..." style={{ ...inputStyle, height: '80px', resize: 'vertical', fontFamily: 'sans-serif' }} />
+        <button onClick={saveNote} style={{ ...btnPrimary, marginTop: '8px' }}>Save Note</button>
+      </div>
+
+      {(lead.activity || []).length > 0 && (
+        <div>
+          <div style={{ fontSize: '13px', fontWeight: '700', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Activity</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {[...(lead.activity || [])].reverse().map((a, i) => (
+              <div key={i} style={{ display: 'flex', gap: '10px', padding: '10px', background: '#f8f8f8', borderRadius: '8px', borderLeft: `3px solid ${BRAND}` }}>
+                <div style={{ fontSize: '16px' }}>{a.type === 'note' ? '📝' : '🔄'}</div>
+                <div>
+                  <div style={{ fontSize: '13px' }}>{a.text}</div>
+                  <div style={{ fontSize: '11px', color: '#999', marginTop: '2px' }}>{formatDate(a.ts)}{a.author ? ` · ${a.author}` : ''}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Leads Page ────────────────────────────────────────────
+function LeadsPage({ leads, rules, isManager, currentRep, addNotification }) {
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState(emptyForm);
+  const [manualRep, setManualRep] = useState(false);
+  const [selectedLead, setSelectedLead] = useState(null);
+  const [activeStage, setActiveStage] = useState(null);
+  const [viewAs, setViewAs] = useState(currentRep);
+
+  useEffect(() => {
+    if (selectedLead) {
+      const updated = leads.find(l => l.id === selectedLead.id);
+      if (updated) setSelectedLead(updated);
+    }
+  }, [leads, selectedLead]);
+
+  useEffect(() => {
+    function checkAlerts() {
+      const now = Date.now();
+      const myLeads = leads.filter(l => l.rep === currentRep);
+      myLeads.forEach(lead => {
+        if (lead.followUp) {
+          const followUpTime = new Date(lead.followUp).getTime();
+          if (followUpTime <= now && followUpTime >= now - 60000) {
+            sendNotification('📅 Follow-up Due', `${lead.name} — ${lead.vehicle}`);
+            addNotification('📅 Follow-up Due', `${lead.name} — ${lead.vehicle}`);
+          }
+        }
+        if (lead.stage === 'New Lead' && lead.createdAt) {
+          const hoursSince = (now - lead.createdAt) / (1000 * 60 * 60);
+          if (hoursSince >= 24 && hoursSince < 25) {
+            sendNotification('⚠️ Lead Not Contacted', `${lead.name} hasn't been contacted in 24 hours`);
+            addNotification('⚠️ Lead Not Contacted', `${lead.name} hasn't been contacted in 24 hours`);
+          }
+        }
+      });
+    }
+    checkAlerts();
+    const interval = setInterval(checkAlerts, 60000);
+    return () => clearInterval(interval);
+  }, [leads, currentRep, addNotification]);
+
+  const visibleLeads = viewAs === 'All' ? leads : leads.filter(l => l.rep === viewAs);
+  function handleChange(e) { setForm({ ...form, [e.target.name]: e.target.value }); }
+
+  async function handleAddLead() {
+    if (!form.name || !form.vehicle || !form.price) { alert('Please fill in name, vehicle, and price.'); return; }
+    const price = parseFloat(form.price);
+    const assignedRep = manualRep ? form.rep : assignRep(price, rules);
+    await addDoc(collection(db, 'leads'), { ...form, price, stage: 'New Lead', rep: assignedRep, createdAt: Date.now(), activity: [], touchpoints: { calls: 0, texts: 0, emails: 0, walkaround: false } });
+    sendNotification('🚗 New Lead', `${form.name} assigned to ${assignedRep}`);
+    addNotification('🚗 New Lead', `${form.name} — ${form.vehicle} assigned to ${assignedRep}`);
+    setForm(emptyForm); setShowForm(false); setManualRep(false);
+  }
+
+  async function advanceStage(lead, e) {
+    e.stopPropagation();
+    const i = STAGES.indexOf(lead.stage);
+    if (i < STAGES.length - 1) {
+      await updateDoc(doc(db, 'leads', lead.id), { stage: STAGES[i + 1] });
+      sendNotification('🔄 Stage Updated', `${lead.name} moved to ${STAGES[i + 1]}`);
+      addNotification('🔄 Stage Updated', `${lead.name} moved to ${STAGES[i + 1]}`);
+    }
+  }
+
+  async function regressStage(lead, e) {
+    e.stopPropagation();
+    const i = STAGES.indexOf(lead.stage);
+    if (i > 0) await updateDoc(doc(db, 'leads', lead.id), { stage: STAGES[i - 1] });
+  }
+
+  async function deleteLead(id, e) {
+    e.stopPropagation();
+    if (window.confirm('Delete this lead?')) {
+      if (selectedLead?.id === id) setSelectedLead(null);
+      await deleteDoc(doc(db, 'leads', id));
+    }
+  }
+
+  const viewOptions = isManager ? [currentRep, ...REPS.filter(r => r !== currentRep), 'All'] : null;
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+        <h2 style={{ margin: 0, fontSize: '16px', fontWeight: '700' }}>
+          {viewAs === 'All' ? `All Leads (${visibleLeads.length})` : `${viewAs}'s Leads (${visibleLeads.length})`}
+        </h2>
+        <button onClick={() => setShowForm(!showForm)} style={btnPrimary}>{showForm ? 'Cancel' : '+ Add Lead'}</button>
+      </div>
+
+      {isManager && (
+        <div style={{ display: 'flex', gap: '6px', marginBottom: '16px', flexWrap: 'wrap' }}>
+          {viewOptions.map(opt => (
+            <button key={opt} onClick={() => setViewAs(opt)} style={{ padding: '6px 14px', borderRadius: '20px', border: `1.5px solid ${viewAs === opt ? BRAND : '#ddd'}`, background: viewAs === opt ? BRAND : 'white', color: viewAs === opt ? 'white' : '#666', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>
+              {opt === currentRep ? `${opt} (me)` : opt}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginBottom: '20px' }}>
+        {STAGES.map(stage => {
+          const count = visibleLeads.filter(l => l.stage === stage).length;
+          const value = visibleLeads.filter(l => l.stage === stage).reduce((s, l) => s + l.price, 0);
+          return (
+            <div key={stage} onClick={() => setActiveStage(stage)} style={{ background: 'white', border: '1px solid #e0e0e0', borderRadius: '10px', padding: '10px', borderTop: `3px solid ${stageColors[stage]}`, cursor: 'pointer' }}>
+              <div style={{ fontSize: '10px', color: '#666', marginBottom: '4px' }}>{stage}</div>
+              <div style={{ fontSize: '18px', fontWeight: '700' }}>{count}</div>
+              {value > 0 && <div style={{ fontSize: '10px', color: '#888' }}>${(value / 1000).toFixed(0)}k</div>}
+              {count > 0 && <div style={{ fontSize: '10px', color: stageColors[stage], marginTop: '2px', fontWeight: '600' }}>tap →</div>}
+            </div>
+          );
+        })}
+      </div>
+
+      {showForm && (
+        <div style={{ background: 'white', border: '2px solid #111', borderRadius: '12px', padding: '16px', marginBottom: '20px' }}>
+          <h3 style={{ margin: '0 0 4px', fontSize: '15px', fontWeight: '700' }}>New Lead</h3>
+          <p style={{ margin: '0 0 14px', fontSize: '12px', color: '#666' }}>Rep auto-assigned by price unless you override.</p>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+            {[
+              { label: 'Customer Name', name: 'name', type: 'text', placeholder: 'Full name' },
+              { label: 'Phone', name: 'phone', type: 'tel', placeholder: '(801) 000-0000' },
+              { label: 'Email', name: 'email', type: 'email', placeholder: 'email@example.com' },
+              { label: 'Vehicle', name: 'vehicle', type: 'text', placeholder: 'Year Make Model' },
+              { label: 'Price', name: 'price', type: 'number', placeholder: '250000' },
+            ].map(f => (
+              <div key={f.name}>
+                <label style={{ fontSize: '12px', color: '#666', display: 'block', marginBottom: '4px', fontWeight: '600' }}>{f.label}</label>
+                <input type={f.type} name={f.name} placeholder={f.placeholder} value={form[f.name]} onChange={handleChange} style={inputStyle} />
+              </div>
+            ))}
+            {[
+              { label: 'Status', name: 'status', options: statuses },
+              { label: 'Source', name: 'source', options: sources },
+            ].map(f => (
+              <div key={f.name}>
+                <label style={{ fontSize: '12px', color: '#666', display: 'block', marginBottom: '4px', fontWeight: '600' }}>{f.label}</label>
+                <select name={f.name} value={form[f.name]} onChange={handleChange} style={inputStyle}>
+                  {f.options.map(o => <option key={o}>{o}</option>)}
+                </select>
+              </div>
+            ))}
+            <div>
+              <label style={{ fontSize: '12px', color: '#666', display: 'block', marginBottom: '4px', fontWeight: '600' }}>
+                Rep <span onClick={() => setManualRep(!manualRep)} style={{ color: BRAND, cursor: 'pointer', textDecoration: 'underline' }}>{manualRep ? '(auto)' : '(override)'}</span>
+              </label>
+              {manualRep
+                ? <select name="rep" value={form.rep} onChange={handleChange} style={inputStyle}>{ALL_REPS.map(o => <option key={o}>{o}</option>)}</select>
+                : <div style={{ ...inputStyle, color: '#888', background: '#fafafa' }}>{form.price ? `→ ${assignRep(parseFloat(form.price), rules)}` : 'Enter price'}</div>}
+            </div>
+          </div>
+          <button onClick={handleAddLead} style={{ ...btnPrimary, marginTop: '14px', padding: '10px 20px' }}>Save Lead</button>
+        </div>
+      )}
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        {visibleLeads.map(lead => {
+          const tp = lead.touchpoints || {};
+          const totalTouches = (tp.calls || 0) + (tp.texts || 0) + (tp.emails || 0);
+          return (
+            <div key={lead.id} onClick={() => setSelectedLead(lead)} style={{ background: selectedLead?.id === lead.id ? BRAND_LIGHT : 'white', border: `2px solid ${selectedLead?.id === lead.id ? BRAND : '#e0e0e0'}`, borderRadius: '10px', padding: '12px 14px', cursor: 'pointer' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+                <div>
+                  <div style={{ fontWeight: '700', fontSize: '15px' }}>{lead.name}</div>
+                  <div style={{ fontSize: '13px', color: '#666', marginTop: '2px' }}>{lead.vehicle}</div>
+                  {lead.phone && <div style={{ fontSize: '12px', color: '#999', marginTop: '2px' }}>{lead.phone}</div>}
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontSize: '14px', fontWeight: '700' }}>${lead.price?.toLocaleString()}</div>
+                  <div style={{ padding: '2px 8px', borderRadius: '20px', fontSize: '11px', fontWeight: '700', background: statusColors[lead.status] + '22', color: statusColors[lead.status], marginTop: '4px', display: 'inline-block' }}>{lead.status}</div>
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px' }}>
+                <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '12px', color: lead.source === 'Lead Form' ? '#534AB7' : '#888', fontWeight: lead.source === 'Lead Form' ? '600' : '400' }}>{lead.source === 'Lead Form' ? '📋 Form' : lead.source}</span>
+                  {viewAs === 'All' && <span style={{ fontSize: '12px', fontWeight: '600' }}>{lead.rep}</span>}
+                  {lead.followUp && <span style={{ fontSize: '11px', color: BRAND, fontWeight: '600' }}>📅 {new Date(lead.followUp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>}
+                  {totalTouches > 0 && <span style={{ fontSize: '11px', color: '#666', background: '#f0f0f0', padding: '2px 7px', borderRadius: '10px' }}>{tp.calls > 0 ? `📞${tp.calls} ` : ''}{tp.texts > 0 ? `💬${tp.texts} ` : ''}{tp.emails > 0 ? `📧${tp.emails}` : ''}</span>}
+                  {tp.walkaround && <span style={{ fontSize: '11px', color: '#3B6D11', fontWeight: '600' }}>🎥</span>}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <button onClick={e => regressStage(lead, e)} style={{ background: '#f5f5f5', border: '1px solid #ddd', borderRadius: '6px', padding: '4px 10px', cursor: 'pointer', fontWeight: '700' }}>←</button>
+                  <div style={{ padding: '3px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: '700', background: stageColors[lead.stage] + '22', color: stageColors[lead.stage], whiteSpace: 'nowrap' }}>{lead.stage}</div>
+                  <button onClick={e => advanceStage(lead, e)} style={{ background: '#f5f5f5', border: '1px solid #ddd', borderRadius: '6px', padding: '4px 10px', cursor: 'pointer', fontWeight: '700' }}>→</button>
+                  <button onClick={e => deleteLead(lead.id, e)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ccc', fontSize: '16px' }}>✕</button>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+        {visibleLeads.length === 0 && (
+          <div style={{ textAlign: 'center', padding: '40px', color: '#999', background: 'white', borderRadius: '10px', border: '1px solid #e0e0e0' }}>
+            No leads yet — tap + Add Lead to get started
+          </div>
+        )}
+      </div>
+
+      {activeStage && <StageDrawer stage={activeStage} leads={visibleLeads} onClose={() => setActiveStage(null)} isManager={isManager} onSelectLead={lead => setSelectedLead(lead)} />}
+      {selectedLead && <LeadDetail lead={selectedLead} onClose={() => setSelectedLead(null)} currentRep={currentRep} />}
+    </div>
+  );
+}
+
+// ─── Inventory Page ────────────────────────────────────────
+function InventoryPage({ vehicles, isManager }) {
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState(emptyVehicle);
+
+  function handleChange(e) { setForm({ ...form, [e.target.name]: e.target.value }); }
+
+  async function handleAddVehicle() {
+    if (!form.year || !form.make || !form.model) { alert('Please fill in year, make, and model.'); return; }
+    await addDoc(collection(db, 'inventory'), { ...form, listPrice: parseFloat(form.listPrice) || 0, buyPrice: parseFloat(form.buyPrice) || 0, miles: parseInt(form.miles) || 0, createdAt: Date.now() });
+    setForm(emptyVehicle); setShowForm(false);
+  }
+
+  async function updateVehicleStatus(id, inventoryStatus) { await updateDoc(doc(db, 'inventory', id), { inventoryStatus }); }
+  async function deleteVehicle(id) { if (window.confirm('Remove this vehicle?')) await deleteDoc(doc(db, 'inventory', id)); }
+
+  const available = vehicles.filter(v => v.inventoryStatus === 'Available').length;
+  const pending = vehicles.filter(v => v.inventoryStatus === 'Pending').length;
+  const sold = vehicles.filter(v => v.inventoryStatus === 'Sold').length;
+  const totalValue = vehicles.filter(v => v.inventoryStatus !== 'Sold').reduce((s, v) => s + (v.listPrice || 0), 0);
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+        <h2 style={{ margin: 0, fontSize: '16px', fontWeight: '700' }}>Inventory ({vehicles.length})</h2>
+        {isManager && <button onClick={() => setShowForm(!showForm)} style={btnPrimary}>{showForm ? 'Cancel' : '+ Add Vehicle'}</button>}
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px', marginBottom: '20px' }}>
+        {[
+          { label: 'Available', value: available, color: '#3B6D11' },
+          { label: 'Pending', value: pending, color: '#BA7517' },
+          { label: 'Sold MTD', value: sold, color: '#999' },
+          { label: 'Lot Value', value: '$' + (totalValue / 1000).toFixed(0) + 'k', color: BRAND },
+        ].map(s => (
+          <div key={s.label} style={{ background: 'white', border: '1px solid #e0e0e0', borderRadius: '10px', padding: '12px', borderTop: `3px solid ${s.color}` }}>
+            <div style={{ fontSize: '11px', color: '#666', marginBottom: '4px' }}>{s.label}</div>
+            <div style={{ fontSize: '22px', fontWeight: '700' }}>{s.value}</div>
+          </div>
+        ))}
+      </div>
+
+      {showForm && isManager && (
+        <div style={{ background: 'white', border: '2px solid #111', borderRadius: '12px', padding: '16px', marginBottom: '20px' }}>
+          <h3 style={{ margin: '0 0 14px', fontSize: '15px', fontWeight: '700' }}>Add Vehicle</h3>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+            {[
+              { label: 'Year', name: 'year', placeholder: '2024' },
+              { label: 'Make', name: 'make', placeholder: 'Lamborghini' },
+              { label: 'Model', name: 'model', placeholder: 'Huracán' },
+              { label: 'Color', name: 'color', placeholder: 'Pearl White' },
+              { label: 'Miles', name: 'miles', placeholder: '1200' },
+              { label: 'Stock #', name: 'stockNum', placeholder: 'LH2401' },
+              { label: 'VIN', name: 'vin', placeholder: '1HGBH41JXMN109186' },
+              { label: 'List Price', name: 'listPrice', placeholder: '284000' },
+              { label: 'Buy Price', name: 'buyPrice', placeholder: '240000' },
+            ].map(f => (
+              <div key={f.name}>
+                <label style={{ fontSize: '12px', color: '#666', display: 'block', marginBottom: '4px', fontWeight: '600' }}>{f.label}</label>
+                <input type="text" name={f.name} placeholder={f.placeholder} value={form[f.name]} onChange={handleChange} style={inputStyle} />
+              </div>
+            ))}
+          </div>
+          <button onClick={handleAddVehicle} style={{ ...btnPrimary, marginTop: '14px', padding: '10px 20px' }}>Save Vehicle</button>
+        </div>
+      )}
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        {vehicles.map(v => {
+          const days = daysSince(v.createdAt);
+          const margin = isManager && v.listPrice && v.buyPrice ? v.listPrice - v.buyPrice : null;
+          return (
+            <div key={v.id} style={{ background: 'white', border: '1px solid #e0e0e0', borderRadius: '10px', padding: '12px 14px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: '700', fontSize: '15px' }}>{v.year} {v.make} {v.model}</div>
+                  <div style={{ fontSize: '12px', color: '#888', marginTop: '3px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    {v.color && <span>🎨 {v.color}</span>}
+                    {v.miles ? <span>📍 {parseInt(v.miles).toLocaleString()} mi</span> : null}
+                    {v.stockNum && <span>#{v.stockNum}</span>}
+                  </div>
+                  {v.vin && <div style={{ fontSize: '11px', color: '#bbb', marginTop: '2px' }}>VIN: {v.vin}</div>}
+                </div>
+                <div style={{ textAlign: 'right', flexShrink: 0, marginLeft: '10px' }}>
+                  <div style={{ fontSize: '15px', fontWeight: '700' }}>${(v.listPrice || 0).toLocaleString()}</div>
+                  {margin !== null && <div style={{ fontSize: '11px', color: '#3B6D11', fontWeight: '600' }}>+${margin.toLocaleString()}</div>}
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ fontSize: '12px', color: days > 30 ? '#993C1D' : '#888', fontWeight: days > 30 ? '700' : '400' }}>{days}d on lot</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <select value={v.inventoryStatus} onChange={e => updateVehicleStatus(v.id, e.target.value)} style={{ padding: '5px 10px', borderRadius: '20px', border: '1px solid #ddd', fontSize: '12px', fontWeight: '700', cursor: 'pointer', background: inventoryStatusColors[v.inventoryStatus] + '18', color: inventoryStatusColors[v.inventoryStatus] }}>
+                    <option>Available</option><option>Pending</option><option>Sold</option>
+                  </select>
+                  {isManager && <button onClick={() => deleteVehicle(v.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ccc', fontSize: '16px' }}>✕</button>}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+        {vehicles.length === 0 && <div style={{ textAlign: 'center', padding: '40px', color: '#999', background: 'white', borderRadius: '10px', border: '1px solid #e0e0e0' }}>No vehicles yet</div>}
+      </div>
+    </div>
+  );
+}
+
+// ─── Reps Page ─────────────────────────────────────────────
+function RepsPage({ leads }) {
+  return (
+    <div>
+      <h2 style={{ margin: '0 0 16px', fontSize: '16px', fontWeight: '700' }}>Sales Reps</h2>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '16px' }}>
+        {REPS.map(rep => {
+          const repLeads = leads.filter(l => l.rep === rep);
+          const active = repLeads.filter(l => l.stage !== 'Delivered').length;
+          const delivered = repLeads.filter(l => l.stage === 'Delivered');
+          const revenue = delivered.reduce((s, l) => s + l.price, 0);
+          const closeRate = repLeads.length > 0 ? Math.round((delivered.length / repLeads.length) * 100) : 0;
+          const progress = Math.min((revenue / 1000000) * 100, 100);
+          return (
+            <div key={rep} style={{ background: 'white', border: '1px solid #e0e0e0', borderRadius: '12px', padding: '18px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+                <div style={{ width: '42px', height: '42px', borderRadius: '50%', background: BRAND, color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '700', fontSize: '14px', flexShrink: 0 }}>{rep.slice(0, 2).toUpperCase()}</div>
+                <div>
+                  <div style={{ fontWeight: '700', fontSize: '15px' }}>{rep}</div>
+                  <div style={{ fontSize: '12px', color: '#666' }}>Sales Rep · Car Guyz Motors</div>
+                </div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '14px' }}>
+                {[
+                  { label: 'Active leads', value: active },
+                  { label: 'Sold MTD', value: delivered.length },
+                  { label: 'Revenue MTD', value: '$' + (revenue / 1000).toFixed(0) + 'k' },
+                  { label: 'Close rate', value: closeRate + '%' },
+                ].map(stat => (
+                  <div key={stat.label} style={{ background: BRAND_LIGHT, borderRadius: '8px', padding: '10px', textAlign: 'center' }}>
+                    <div style={{ fontSize: '18px', fontWeight: '700' }}>{stat.value}</div>
+                    <div style={{ fontSize: '11px', color: '#888', marginTop: '2px' }}>{stat.label}</div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ fontSize: '12px', color: '#666', marginBottom: '6px', display: 'flex', justifyContent: 'space-between' }}>
+                <span>Monthly goal</span><span style={{ fontWeight: '600' }}>${(revenue / 1000).toFixed(0)}k / $1M</span>
+              </div>
+              <div style={{ height: '6px', background: '#e0e0e0', borderRadius: '3px', overflow: 'hidden' }}>
+                <div style={{ height: '100%', width: progress + '%', background: progress >= 80 ? '#3B6D11' : progress >= 40 ? BRAND : '#BA7517', borderRadius: '3px' }} />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─── Settings Page ─────────────────────────────────────────
+function SettingsPage({ rules, setRules }) {
+  function toggleRep(ruleId, rep) {
+    setRules(rules.map(rule => {
+      if (rule.id !== ruleId) return rule;
+      const hasRep = rule.reps.includes(rep);
+      return { ...rule, reps: hasRep ? rule.reps.filter(r => r !== rep) : [...rule.reps, rep] };
+    }));
+  }
+  function updateMode(ruleId, mode) { setRules(rules.map(rule => rule.id === ruleId ? { ...rule, mode } : rule)); }
+  return (
+    <div>
+      <h2 style={{ margin: '0 0 4px', fontSize: '16px', fontWeight: '700' }}>Lead Distribution Rules</h2>
+      <p style={{ margin: '0 0 20px', fontSize: '13px', color: '#666' }}>Set which reps receive leads based on price range.</p>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+        {rules.map(rule => (
+          <div key={rule.id} style={{ background: 'white', border: '1px solid #e0e0e0', borderRadius: '12px', padding: '18px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+              <div>
+                <div style={{ fontWeight: '700', fontSize: '15px' }}>{rule.label}</div>
+                <div style={{ fontSize: '12px', color: '#666', marginTop: '2px' }}>${rule.minPrice.toLocaleString()} – {rule.maxPrice > 9000000 ? 'and up' : '$' + rule.maxPrice.toLocaleString()}</div>
+              </div>
+              <select value={rule.mode} onChange={e => updateMode(rule.id, e.target.value)} style={{ padding: '6px 10px', borderRadius: '7px', border: '1px solid #ddd', fontSize: '13px' }}>
+                <option value="round-robin">Round robin</option>
+                <option value="first">Always first rep</option>
+              </select>
+            </div>
+            <div style={{ fontSize: '12px', color: '#666', marginBottom: '8px', fontWeight: '600' }}>Eligible reps:</div>
+            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+              {REPS.map(rep => {
+                const checked = rule.reps.includes(rep);
+                return (
+                  <label key={rep} style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', padding: '8px 16px', borderRadius: '20px', fontSize: '13px', fontWeight: '600', background: checked ? BRAND : '#f5f5f5', color: checked ? 'white' : '#666', border: `1px solid ${checked ? BRAND : '#e0e0e0'}` }}>
+                    <input type="checkbox" checked={checked} onChange={() => toggleRep(rule.id, rep)} style={{ display: 'none' }} />
+                    {rep}
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Intake form link */}
+      <div style={{ marginTop: '28px' }}>
+        <h3 style={{ fontSize: '15px', fontWeight: '700', marginBottom: '4px' }}>Lead Intake Form</h3>
+        <p style={{ fontSize: '13px', color: '#666', margin: '0 0 12px' }}>Share this link with customers to collect lead info directly into your CRM.</p>
+        <div style={{ background: 'white', border: '1px solid #e0e0e0', borderRadius: '10px', padding: '14px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{ flex: 1, fontSize: '13px', color: '#534AB7', fontWeight: '600', wordBreak: 'break-all' }}>
+            {window.location.origin}/intake
+          </div>
+          <button onClick={() => { navigator.clipboard.writeText(`${window.location.origin}/intake`); alert('Link copied!'); }} style={{ ...btnPrimary, padding: '6px 14px', fontSize: '12px', flexShrink: 0 }}>
+            Copy
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── App Root ──────────────────────────────────────────────
+function App() {
+  const [user, setUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [page, setPage] = useState('Leads');
+  const [leads, setLeads] = useState([]);
+  const [vehicles, setVehicles] = useState([]);
+  const [rules, setRules] = useState(initialRules);
+  const [dataLoading, setDataLoading] = useState(true);
+  const [notifications, setNotifications] = useState([]);
+  const [notifPermission, setNotifPermission] = useState(false);
+
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, u => { setUser(u); setAuthLoading(false); });
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    requestNotificationPermission().then(granted => setNotifPermission(granted));
+    let leadsLoaded = false;
+    let inventoryLoaded = false;
+    const unsub1 = onSnapshot(collection(db, 'leads'), snapshot => {
+      const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      data.sort((a, b) => b.createdAt - a.createdAt);
+      setLeads(data); leadsLoaded = true;
+      if (leadsLoaded && inventoryLoaded) setDataLoading(false);
+    });
+    const unsub2 = onSnapshot(collection(db, 'inventory'), snapshot => {
+      const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      data.sort((a, b) => b.createdAt - a.createdAt);
+      setVehicles(data); inventoryLoaded = true;
+      if (leadsLoaded && inventoryLoaded) setDataLoading(false);
+    });
+    return () => { unsub1(); unsub2(); };
+  }, [user]);
+
+  const addNotification = useCallback((title, body) => {
+    setNotifications(prev => [{ title, body, ts: Date.now(), read: false }, ...prev].slice(0, 50));
+  }, []);
+
+  // Show intake form for public /intake route
+  if (window.location.pathname === '/intake') return <LeadForm />;
+
+  if (authLoading) return (
+    <div style={{ fontFamily: 'sans-serif', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', background: BRAND }}>
+      <div style={{ color: 'white', fontSize: '22px', fontWeight: '700', letterSpacing: '1px' }}>CAR GUYZ MOTORS</div>
+      <div style={{ color: '#888', fontSize: '13px', marginTop: '8px' }}>Loading...</div>
+    </div>
+  );
+
+  if (!user) return <LoginPage />;
+
+  const isManager = MANAGER_UIDS.includes(user.uid);
+  const currentRep = EMAIL_TO_REP[user.email] || user.email;
+
+  if (dataLoading) return (
+    <div style={{ fontFamily: 'sans-serif', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', background: BRAND }}>
+      <div style={{ color: 'white', fontSize: '22px', fontWeight: '700', letterSpacing: '1px' }}>CAR GUYZ MOTORS</div>
+      <div style={{ color: '#888', fontSize: '13px', marginTop: '8px' }}>Loading CRM...</div>
+    </div>
+  );
+
+  return (
+    <div style={{ fontFamily: 'sans-serif', maxWidth: '980px', margin: '0 auto' }}>
+      <QuoteTicker />
+      <div style={{ padding: '16px' }}>
+        <div style={{ marginBottom: '16px', paddingBottom: '14px', borderBottom: '2px solid #111' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <div style={{ background: BRAND, color: 'white', fontWeight: '800', fontSize: '12px', padding: '6px 10px', borderRadius: '6px', letterSpacing: '1px', flexShrink: 0 }}>CGM</div>
+              <div>
+                <div style={{ fontSize: '15px', fontWeight: '800', letterSpacing: '0.5px' }}>CAR GUYZ MOTORS</div>
+                <div style={{ fontSize: '11px', color: '#888' }}>{isManager ? '👑 Manager' : `👤 ${currentRep}`} · American Fork, UT</div>
+              </div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+              {!notifPermission && (
+                <button onClick={() => requestNotificationPermission().then(setNotifPermission)} style={{ background: '#ff6b35', color: 'white', border: 'none', borderRadius: '7px', padding: '5px 8px', cursor: 'pointer', fontSize: '11px', fontWeight: '600' }}>🔔 Allow</button>
+              )}
+              <NotificationBell notifications={notifications} onClear={() => setNotifications([])} />
+              <button onClick={() => signOut(auth)} style={{ background: 'none', border: '1px solid #ddd', borderRadius: '7px', padding: '6px 10px', cursor: 'pointer', fontSize: '12px', color: '#666' }}>Out</button>
+            </div>
+          </div>
+        </div>
+
+        <NavBar page={page} setPage={setPage} isManager={isManager} />
+        {page === 'Leads' && <LeadsPage leads={leads} rules={rules} isManager={isManager} currentRep={currentRep} addNotification={addNotification} />}
+        {page === 'Inventory' && <InventoryPage vehicles={vehicles} isManager={isManager} />}
+        {page === 'Reps' && isManager && <RepsPage leads={leads} />}
+        {page === 'Settings' && isManager && <SettingsPage rules={rules} setRules={setRules} />}
+      </div>
+
+      <Notepad userId={user.uid} />
+    </div>
+  );
+}
+
+export default App;
